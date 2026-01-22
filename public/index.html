@@ -137,10 +137,12 @@
     </div>
     <div class="row">
       <button id="simple_read">Read & Dump</button>
-      <input id="simple_block" placeholder="block number" style="width:120px" />
+      <label style="margin-left:12px;margin-right:6px">Block</label>
+      <select id="simple_block" style="width:120px"></select>
       <button id="simple_read_block">Read Block</button>
       <input id="simple_text" placeholder="text to write (will be utf-8) or comma bytes" style="width:300px" />
       <button id="simple_write">Write Text To Block</button>
+      <button id="simple_erase" style="background:#a33;margin-left:6px">Erase Block</button>
       <div style="margin-top:6px">Read result: <span id="simple_read_result">-</span></div>
     </div>
     <div class="row">

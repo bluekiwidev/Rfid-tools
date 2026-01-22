@@ -123,6 +123,14 @@ $('simple_read_block').addEventListener('click', () => {
   $('simple_read_result').textContent = 'waiting...';
 });
 
+// Erase block: write 16 zero bytes
+$('simple_erase').addEventListener('click', () => {
+  const blk = parseInt($('simple_block').value || '8', 10);
+  if (!confirm('Erase block ' + blk + '? This will write 16 zero bytes.')) return;
+  const zeros = new Array(16).fill(0);
+  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: zeros, protocol: getProtocol(), key: getKey() });
+});
+
 socket.on('serial_status', (s) => {
   // show status in status area; log only when verbose
   if (isVerbose()) log('STATUS: ' + pretty(s));
@@ -276,6 +284,14 @@ function renderDump(uid, dump) {
   table.style.width = '100%';
   table.style.borderCollapse = 'collapse';
   const keys = Object.keys(dump).sort((a,b)=>parseInt(a)-parseInt(b));
+  // Populate simple block selector with available keys (0..63)
+  const sel = $('simple_block');
+  if (sel) {
+    sel.innerHTML = '';
+    for (let i=0;i<64;i++) {
+      const opt = document.createElement('option'); opt.value = i; opt.text = i; sel.appendChild(opt);
+    }
+  }
   keys.forEach(k => {
     const tr = document.createElement('tr');
     const td1 = document.createElement('td');
