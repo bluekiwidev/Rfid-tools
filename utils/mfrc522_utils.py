@@ -6,6 +6,56 @@ tag_types = {0: "nothing", 16: "MIFARE Classic 1K"}
 SUPPORTED_PROTOCOLS = ('auto', 'mifare', 'ntag')
 
 
+def _key_to_bytes(key, rdr):
+    """Normalize key input to a list of 6 ints usable by rdr.auth.
+    Accepts None (use rdr.KEY), a list/bytearray of ints, comma-separated string, or hex string.
+    Returns (key_bytes, None) on success or (None, error_message) on failure.
+    """
+    if key is None:
+        return (rdr.KEY, None)
+    # if already a list/bytearray
+    if isinstance(key, (list, bytearray)):
+        try:
+            kb = [int(x) & 0xFF for x in key]
+            if len(kb) != 6:
+                return (None, 'bad_key_length')
+            return (kb, None)
+        except Exception:
+            return (None, 'bad_key_format')
+    if isinstance(key, str):
+        s = key.strip()
+        if not s:
+            return (None, 'bad_key_format')
+        if s.lower() in ('default', 'rdr', 'reader', 'none'):
+            return (rdr.KEY, None)
+        # Try comma or space separated numbers first
+        if ',' in s or ' ' in s or ':' in s or '-' in s:
+            # split on common separators
+            import re
+            parts = re.split('[,:\-\s]+', s)
+            parts = [p for p in parts if p]
+            try:
+                kb = [int(p, 0) & 0xFF for p in parts]
+                if len(kb) != 6:
+                    return (None, 'bad_key_length')
+                return (kb, None)
+            except Exception:
+                # fall through to hex parsing
+                pass
+        # Try hex string: remove any non-hex chars, then parse pairs
+        try:
+            hs = ''.join(c for c in s if c in '0123456789abcdefABCDEF')
+            if len(hs) < 12:
+                return (None, 'bad_key_length')
+            # if longer, take first 12 hex chars
+            hs = hs[:12]
+            kb = [int(hs[i:i+2], 16) for i in range(0, 12, 2)]
+            return (kb, None)
+        except Exception:
+            return (None, 'bad_key_format')
+    return (None, 'bad_key_type')
+
+
 def _select_with_fallback(rdr, raw_uid):
     """Try selecting tag using provided UID (with BCC) then fallback to 4-byte UID.
     Returns (True, used_uid) on success or (False, raw_uid) on failure.
@@ -176,7 +226,7 @@ def _uid_str_to_raw(uid_str):
         return None
 
 
-def dump_tag(rdr, uid_str=None, protocol='auto'):
+def dump_tag(rdr, uid_str=None, protocol='auto', key=None):
     """Read all blocks from a MIFARE Classic 1K tag (blocks 0..63).
     `protocol` may be 'auto', 'mifare' or 'ntag'. Currently only 'auto' and 'mifare' are
     supported; 'ntag' will return an error until a dedicated NTAG flow is implemented.
@@ -203,6 +253,9 @@ def dump_tag(rdr, uid_str=None, protocol='auto'):
                 return {"error": "invalid_uid"}
 
         out = {}
+        key_bytes, key_err = _key_to_bytes(key, rdr)
+        if key_err:
+            return {"error": key_err}
         sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"error": "select_failed", "addr": 0, "raw_uid": raw_uid}
@@ -210,7 +263,7 @@ def dump_tag(rdr, uid_str=None, protocol='auto'):
         raw_uid = used_uid
         for addr in range(64):
             # authenticate per block (same key assumed)
-            if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
+            if rdr.auth(rdr.AUTHENT1A, addr, key_bytes, raw_uid) != rdr.OK:
                 out[addr] = None
                 continue
             data = rdr.read(addr)
@@ -227,12 +280,15 @@ def dump_tag(rdr, uid_str=None, protocol='auto'):
         return {"error": str(e)}
 
 
-def read_block(rdr, uid_str, addr, protocol='auto'):
+def read_block(rdr, uid_str, addr, protocol='auto', key=None):
     try:
         if protocol not in SUPPORTED_PROTOCOLS:
             return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
         if protocol == 'ntag':
             return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
+        key_bytes, key_err = _key_to_bytes(key, rdr)
+        if key_err:
+            return {"ok": False, "error": key_err}
         # If uid_str is None, get raw UID directly from reader
         if uid_str is None:
             (stat, tag_type) = rdr.request(rdr.REQIDL)
@@ -252,7 +308,7 @@ def read_block(rdr, uid_str, addr, protocol='auto'):
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         # use selected UID for auth
         raw_uid = used_uid
-        if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
+        if rdr.auth(rdr.AUTHENT1A, addr, key_bytes, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         data = rdr.read(addr)
         try:
@@ -267,12 +323,15 @@ def read_block(rdr, uid_str, addr, protocol='auto'):
         return {"ok": False, "error": "exception", "message": str(e)}
 
 
-def write_block(rdr, uid_str, addr, data, protocol='auto'):
+def write_block(rdr, uid_str, addr, data, protocol='auto', key=None):
     try:
         if protocol not in SUPPORTED_PROTOCOLS:
             return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
         if protocol == 'ntag':
             return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
+        key_bytes, key_err = _key_to_bytes(key, rdr)
+        if key_err:
+            return {"ok": False, "error": key_err}
         # allow passing comma-separated string too
         if isinstance(data, str):
             try:
@@ -305,7 +364,7 @@ def write_block(rdr, uid_str, addr, data, protocol='auto'):
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         # use selected UID for auth/write
         raw_uid = used_uid
-        if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
+        if rdr.auth(rdr.AUTHENT1A, addr, key_bytes, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         stat = rdr.write(addr, block)
         try:
@@ -323,7 +382,7 @@ def write_block(rdr, uid_str, addr, data, protocol='auto'):
 from .ndef_utils import ndef_message_to_blocks
 
 
-def format_ndef(rdr, uid_str, start_block=4, protocol='auto'):
+def format_ndef(rdr, uid_str, start_block=4, protocol='auto', key=None):
     """Write an empty NDEF TLV container starting at start_block."""
     try:
         if protocol not in SUPPORTED_PROTOCOLS or protocol == 'ntag':
@@ -331,21 +390,21 @@ def format_ndef(rdr, uid_str, start_block=4, protocol='auto'):
         blocks = ndef_message_to_blocks(b'')
         # write blocks sequentially
         for i, blk in enumerate(blocks):
-            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol):
+            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol, key=key):
                 return False
         return True
     except Exception:
         return False
 
 
-def write_ndef(rdr, uid_str, text, start_block=4, protocol='auto'):
+def write_ndef(rdr, uid_str, text, start_block=4, protocol='auto', key=None):
     try:
         if protocol not in SUPPORTED_PROTOCOLS or protocol == 'ntag':
             return False
         payload = text.encode('utf-8')
         blocks = ndef_message_to_blocks(payload, text=True)
         for i, blk in enumerate(blocks):
-            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol):
+            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol, key=key):
                 return False
         return True
     except Exception:

@@ -10,6 +10,7 @@ function pretty(obj) {
 function isVerbose() { return !!$('verbose') && $('verbose').checked; }
 
 function getProtocol() { const p = $('protocol'); return p ? p.value : 'auto'; }
+function getKey() { const k = $('key'); return k ? (k.value ? k.value.trim() : null) : null; }
 
 function setStatus(state, detail) {
   const dot = $('status-dot');
@@ -102,7 +103,7 @@ updateMode();
 // Simple mode controls
 $('simple_read').addEventListener('click', () => {
   // trigger dump and let the firmware auto-wait for tag
-  socket.emit('serial_cmd', { cmd: 'dump', uid: null, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'dump', uid: null, protocol: getProtocol(), key: getKey() });
 });
 
 $('simple_write').addEventListener('click', () => {
@@ -111,14 +112,14 @@ $('simple_write').addEventListener('click', () => {
   // encode text to utf-8 bytes
   const encoder = new TextEncoder();
   const bytes = Array.from(encoder.encode(text)).slice(0,16);
-  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: bytes, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: bytes, protocol: getProtocol(), key: getKey() });
 });
 
 // Simple read-block button
 $('simple_read_block').addEventListener('click', () => {
   const blk = parseInt($('simple_block').value || '8', 10);
   // ask firmware to wait for tag and read block
-  socket.emit('serial_cmd', { cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol(), key: getKey() });
   $('simple_read_result').textContent = 'waiting...';
 });
 
@@ -222,20 +223,20 @@ socket.on('serial_raw', (r) => {
 });
 
 $('read_uid').addEventListener('click', () => {
-  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
 });
 
 $('dump').addEventListener('click', () => {
-  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
   // after UID read, user can press dump with the UID from output; simple UI for demo
   const uid = prompt('Enter UID (0x...) from read_uid output (or leave blank to auto)');
-  socket.emit('serial_cmd', { cmd: 'dump', uid: uid || null, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'dump', uid: uid || null, protocol: getProtocol(), key: getKey() });
 });
 
 $('read_block').addEventListener('click', () => {
   const addr = $('addr').value || '8';
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol(), key: getKey() });
 });
 
 $('write_block').addEventListener('click', () => {
@@ -243,18 +244,18 @@ $('write_block').addEventListener('click', () => {
   const raw = $('write_data').value || '';
   const arr = raw.split(',').map(s => parseInt(s.trim(),10)||0);
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol(), key: getKey() });
 });
 
 $('format_ndef').addEventListener('click', () => {
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'format_ndef', uid: uid || null, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'format_ndef', uid: uid || null, protocol: getProtocol(), key: getKey() });
 });
 
 $('write_ndef').addEventListener('click', () => {
   const text = $('ndef_text').value || 'Hello';
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol() });
+  socket.emit('serial_cmd', { cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol(), key: getKey() });
 });
 
 // auto-list ports on load
