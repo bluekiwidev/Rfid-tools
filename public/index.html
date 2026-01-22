@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>RFID Control Panel</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 20px; }
+    .row{ margin-bottom: 8px }
+    textarea{ width:100%; height:200px }
+    button{ margin-right:6px }
+  </style>
+</head>
+<body>
+  <h2>RFID Control Panel</h2>
+  <div id="status" style="margin-bottom:12px">
+    <span id="status-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c00;margin-right:8px;vertical-align:middle"></span>
+    <strong id="status-text">Disconnected</strong>
+    <span id="status-detail" style="margin-left:12px;color:#666;font-size:90%"></span>
+  </div>
+  <div class="row">
+    <button id="list">List Serial Ports</button>
+    <select id="ports"></select>
+    <button id="connect">Connect</button>
+    <button id="disconnect">Disconnect</button>
+  </div>
+
+  <div class="row">
+    <button id="read_uid">Read UID</button>
+    <button id="dump">Dump Tag</button>
+    <input id="addr" placeholder="block (addr)" style="width:120px" />
+    <button id="read_block">Read Block</button>
+    <button id="write_block">Write Block</button>
+    <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
+  </div>
+
+  <div class="row">
+    <input id="ndef_text" placeholder="NDEF text" style="width:400px" />
+    <button id="format_ndef">Format NDEF (write empty)</button>
+    <button id="write_ndef">Write NDEF</button>
+  </div>
+
+  <h3>Serial Output</h3>
+  <textarea id="log"></textarea>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
