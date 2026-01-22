@@ -2,11 +2,7 @@
 # Replace the placeholders below with your Cloudflare Account ID and any desired name.
 
 name = "rfid-tools"
-account_id = "YOUR_ACCOUNT_ID_HERE"
-# The output directory for Pages (used by `wrangler pages deploy`)
+# Pages output directory
 pages_build_output_dir = "./public"
 
-# Optional: keep a [site] section for backwards compatibility with Workers Sites
-[site]
-  bucket = "./public"
-  include = ["**/*"]
+# Note: Cloudflare Pages build will ignore `account_id` and `[site]` fields.
