@@ -122,9 +122,29 @@ def dump_tag(rdr, uid_str=None):
                 return {"error": "invalid_uid"}
 
         out = {}
-        # select tag once before reading blocks
-        if rdr.select_tag(raw_uid) != rdr.OK:
-            return {"error": "select_failed", "addr": 0}
+        def _select_with_fallback(raw_uid):
+            # Try selecting with the provided UID bytes; if that fails, try only first 4 bytes (no BCC)
+            for attempt in range(3):
+                if rdr.select_tag(raw_uid) == rdr.OK:
+                    return True, raw_uid
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+            if raw_uid and len(raw_uid) >= 5:
+                short = raw_uid[:4]
+                for attempt in range(3):
+                    if rdr.select_tag(short) == rdr.OK:
+                        return True, short
+                    try:
+                        time.sleep(0.02)
+                    except Exception:
+                        pass
+            return False, raw_uid
+
+        sel_ok, used_uid = _select_with_fallback(raw_uid)
+        if not sel_ok:
+            return {"error": "select_failed", "addr": 0, "raw_uid": raw_uid}
         for addr in range(64):
             # authenticate per block (same key assumed)
             if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
@@ -146,11 +166,45 @@ def dump_tag(rdr, uid_str=None):
 
 def read_block(rdr, uid_str, addr):
     try:
-        raw_uid = _uid_str_to_raw(uid_str)
-        if not raw_uid:
-            return {"ok": False, "error": "invalid_uid"}
-        if rdr.select_tag(raw_uid) != rdr.OK:
-            return {"ok": False, "error": "select_failed"}
+        # If uid_str is None, get raw UID directly from reader
+        if uid_str is None:
+            (stat, tag_type) = rdr.request(rdr.REQIDL)
+            if stat != rdr.OK:
+                return {"ok": False, "error": "no_tag_present"}
+            (stat, recv) = rdr.anticoll()
+            if stat != rdr.OK:
+                return {"ok": False, "error": "anticoll_failed"}
+            raw_uid = recv
+        else:
+            raw_uid = _uid_str_to_raw(uid_str)
+            if not raw_uid:
+                return {"ok": False, "error": "invalid_uid"}
+
+        # try selecting with fallback
+        def _select_with_fallback_local(raw_uid):
+            if not raw_uid:
+                return False, raw_uid
+            for _ in range(3):
+                if rdr.select_tag(raw_uid) == rdr.OK:
+                    return True, raw_uid
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+            if len(raw_uid) >= 5:
+                short = raw_uid[:4]
+                for _ in range(3):
+                    if rdr.select_tag(short) == rdr.OK:
+                        return True, short
+                    try:
+                        time.sleep(0.02)
+                    except Exception:
+                        pass
+            return False, raw_uid
+
+        sel_ok, used_uid = _select_with_fallback_local(raw_uid)
+        if not sel_ok:
+            return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         data = rdr.read(addr)
@@ -181,11 +235,23 @@ def write_block(rdr, uid_str, addr, data):
         for i in range(min(16, len(data))):
             block[i] = int(data[i]) & 0xFF
 
-        raw_uid = _uid_str_to_raw(uid_str)
-        if not raw_uid:
-            return {"ok": False, "error": "invalid_uid"}
-        if rdr.select_tag(raw_uid) != rdr.OK:
-            return {"ok": False, "error": "select_failed"}
+        # If uid_str is None, get raw UID directly from reader
+        if uid_str is None:
+            (stat, tag_type) = rdr.request(rdr.REQIDL)
+            if stat != rdr.OK:
+                return {"ok": False, "error": "no_tag_present"}
+            (stat, recv) = rdr.anticoll()
+            if stat != rdr.OK:
+                return {"ok": False, "error": "anticoll_failed"}
+            raw_uid = recv
+        else:
+            raw_uid = _uid_str_to_raw(uid_str)
+            if not raw_uid:
+                return {"ok": False, "error": "invalid_uid"}
+
+        sel_ok, used_uid = _select_with_fallback_local(raw_uid)
+        if not sel_ok:
+            return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         stat = rdr.write(addr, block)
