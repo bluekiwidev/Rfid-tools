@@ -43,6 +43,8 @@ $('connect').addEventListener('click', () => {
 
 $('disconnect').addEventListener('click', () => socket.emit('disconnect_serial'));
 
+$('clear_log').addEventListener('click', () => { $('log').value = ''; });
+
 socket.on('serial_status', (s) => {
   log('STATUS: ' + JSON.stringify(s));
   if (s && s.ok) {
