@@ -2,9 +2,12 @@ import json
 
 # READ known_tags from JSON
 def get_tags_dict(json_path):
-    with open(json_path, 'r') as file:
-        known_tags = json.load(file)
-    return known_tags
+    try:
+        with open(json_path, 'r') as file:
+            known_tags = json.load(file)
+        return known_tags
+    except Exception:
+        return {}
 
 
 if __name__ == "__main__":
