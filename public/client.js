@@ -1,4 +1,17 @@
 const socket = io();
+const pending = {};
+
+function sendCmdAwait(cmd, timeout=12000) {
+  return new Promise((resolve, reject) => {
+    const txn = 't' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+    cmd.txn = txn;
+    const to = setTimeout(() => {
+      if (pending[txn]) { delete pending[txn]; reject(new Error('timeout')); }
+    }, timeout);
+    pending[txn] = { resolve, reject, to };
+    socket.emit('serial_cmd', cmd);
+  });
+}
 
 const $ = (id) => document.getElementById(id);
 const log = (t) => { $('log').value += t + '\n'; $('log').scrollTop = $('log').scrollHeight; };
@@ -106,13 +119,56 @@ $('simple_read').addEventListener('click', () => {
   socket.emit('serial_cmd', { cmd: 'dump', uid: null, protocol: getProtocol(), key: getKey() });
 });
 
-$('simple_write').addEventListener('click', () => {
-  const blk = parseInt($('simple_block').value || '8', 10);
+$('simple_write').addEventListener('click', async () => {
+  const start = parseInt($('simple_block').value || '8', 10);
   const text = $('simple_text').value || '';
-  // encode text to utf-8 bytes
   const encoder = new TextEncoder();
-  const bytes = Array.from(encoder.encode(text)).slice(0,16);
-  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: bytes, protocol: getProtocol(), key: getKey() });
+  const bytes = Array.from(encoder.encode(text));
+  if (bytes.length === 0) return alert('Nothing to write');
+
+  // determine number of blocks
+  const needed = Math.ceil(bytes.length / 16);
+
+  try {
+    // read and verify target blocks are empty (or collect originals for rollback)
+    const originals = [];
+    for (let i=0;i<needed;i++) {
+      const addr = start + i;
+      const r = await sendCmdAwait({ cmd: 'read_block', uid: null, addr, protocol: getProtocol(), key: getKey() });
+      if (!r || !r.cmd) throw new Error('no response');
+      if (!r.ok) {
+        // treat missing data as non-empty and abort
+        throw new Error('read failed for block ' + addr + ' (' + (r.error||r.message||'') + ')');
+      }
+      const data = Array.isArray(r.data) ? r.data : [];
+      originals.push(data.slice());
+      // consider empty if all bytes are 0
+      const empty = data.length === 0 || data.every(b => (b & 0xFF) === 0);
+      if (!empty) throw new Error('target block ' + addr + ' is not empty');
+    }
+
+    // all clear: write sequentially
+    for (let i=0;i<needed;i++) {
+      const addr = start + i;
+      const chunk = bytes.slice(i*16, (i+1)*16);
+      const block = new Array(16).fill(0);
+      for (let j=0;j<chunk.length && j<16;j++) block[j] = chunk[j] & 0xFF;
+      const w = await sendCmdAwait({ cmd: 'write_block', uid: null, addr, data: block, protocol: getProtocol(), key: getKey() });
+      if (!w || !w.cmd) throw new Error('no response writing block ' + addr);
+      if (!w.ok) {
+        // rollback previous writes
+        for (let k=0;k<i;k++) {
+          const addr2 = start + k;
+          const orig = originals[k] || new Array(16).fill(0);
+          try { await sendCmdAwait({ cmd: 'write_block', uid: null, addr: addr2, data: orig, protocol: getProtocol(), key: getKey() }); } catch (e) {}
+        }
+        throw new Error('write failed for block ' + addr + ' (' + (w.error||w.message||'') + ')');
+      }
+    }
+    alert('Write complete');
+  } catch (err) {
+    alert('Write aborted: ' + (err && err.message ? err.message : String(err)));
+  }
 });
 
 // Simple read-block button
@@ -149,6 +205,14 @@ socket.on('serial_status', (s) => {
 });
 
 socket.on('serial_data', (d) => {
+  // resolve pending promises for non-status responses
+  try {
+    if (d && d.txn && pending[d.txn] && d.cmd !== 'status') {
+      clearTimeout(pending[d.txn].to);
+      pending[d.txn].resolve(d);
+      delete pending[d.txn];
+    }
+  } catch (e) {}
   // If device is sending status updates, show them in status detail
   if (d && d.cmd === 'status') {
     const s = d.status || d.message || JSON.stringify(d);
@@ -211,7 +275,24 @@ socket.on('serial_data', (d) => {
     if (!data) {
       $('simple_read_result').textContent = '(no data)';
     } else if (Array.isArray(data)) {
-      $('simple_read_result').textContent = data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+      try {
+        const bytes = new Uint8Array(data.map(x => x & 0xFF));
+        const dec = new TextDecoder('utf-8');
+        let txt = dec.decode(bytes);
+        // strip trailing nulls and control chars
+        txt = txt.replace(/\x00+$/,'');
+        const printable = txt.split('').every(ch => {
+          const c = ch.charCodeAt(0);
+          return (c >= 9 && c <= 13) || (c >= 32 && c <= 126);
+        });
+        if (printable && txt.length > 0) {
+          $('simple_read_result').textContent = txt + '  (' + data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ') + ')';
+        } else {
+          $('simple_read_result').textContent = data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+        }
+      } catch (e) {
+        $('simple_read_result').textContent = data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+      }
     } else {
       $('simple_read_result').textContent = JSON.stringify(data);
     }

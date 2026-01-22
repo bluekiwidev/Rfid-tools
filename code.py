@@ -61,6 +61,9 @@ if __name__ == "__main__":
 
     def send_response(obj):
         try:
+            # include current txn if present and not already provided
+            if current_txn and isinstance(obj, dict) and 'txn' not in obj:
+                obj['txn'] = current_txn
             s = json.dumps(obj)
         except Exception:
             s = json.dumps({"error": "serialization_failed"})
@@ -68,6 +71,7 @@ if __name__ == "__main__":
             usb.write(s.encode('utf-8') + b"\n")
         except Exception:
             print(s)
+        
 
     def wait_for_tag(timeout=15, poll_delay=0.2, address=8):
         """Poll the reader until a tag UID is found or timeout (seconds) expires.
@@ -88,6 +92,7 @@ if __name__ == "__main__":
         return None, None
 
     print("ready")
+    current_txn = None
     while True:
         try:
             if usb and getattr(usb, 'in_waiting', 0):
@@ -104,6 +109,8 @@ if __name__ == "__main__":
                 except Exception:
                     send_response({"error": "bad_json", "raw": raw.decode('utf-8', 'ignore')})
                     continue
+                # capture txn to echo it in all responses for client-side correlation
+                current_txn = cmd.get('txn')
 
                 # handle simple commands
                 action = cmd.get('cmd')
