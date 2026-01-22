@@ -3,9 +3,10 @@
 
 name = "rfid-tools"
 account_id = "YOUR_ACCOUNT_ID_HERE"
-# Use `site` to publish a static site from ./public
-type = "javascript"
+# The output directory for Pages (used by `wrangler pages deploy`)
+pages_build_output_dir = "./public"
 
+# Optional: keep a [site] section for backwards compatibility with Workers Sites
 [site]
   bucket = "./public"
   include = ["**/*"]
