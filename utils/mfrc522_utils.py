@@ -148,25 +148,34 @@ def read_block(rdr, uid_str, addr):
     try:
         raw_uid = _uid_str_to_raw(uid_str)
         if not raw_uid:
-            return None
+            return {"ok": False, "error": "invalid_uid"}
         if rdr.select_tag(raw_uid) != rdr.OK:
-            return None
+            return {"ok": False, "error": "select_failed"}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
-            return None
+            return {"ok": False, "error": "auth_failed"}
         data = rdr.read(addr)
         try:
             rdr.stop_crypto1()
         except Exception:
             pass
-        return [int(x) for x in data] if data else None
-    except Exception:
-        return None
+        if data:
+            return {"ok": True, "data": [int(x) for x in data]}
+        else:
+            return {"ok": False, "error": "read_empty"}
+    except Exception as e:
+        return {"ok": False, "error": "exception", "message": str(e)}
 
 
 def write_block(rdr, uid_str, addr, data):
     try:
+        # allow passing comma-separated string too
+        if isinstance(data, str):
+            try:
+                data = [int(x.strip()) for x in data.split(',') if x.strip()]
+            except Exception:
+                return {"ok": False, "error": "bad_data_format"}
         if not isinstance(data, (list, bytearray)):
-            return False
+            return {"ok": False, "error": "bad_data_type"}
         # normalize to list of 16 ints
         block = [0] * 16
         for i in range(min(16, len(data))):
@@ -174,19 +183,22 @@ def write_block(rdr, uid_str, addr, data):
 
         raw_uid = _uid_str_to_raw(uid_str)
         if not raw_uid:
-            return False
+            return {"ok": False, "error": "invalid_uid"}
         if rdr.select_tag(raw_uid) != rdr.OK:
-            return False
+            return {"ok": False, "error": "select_failed"}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
-            return False
+            return {"ok": False, "error": "auth_failed"}
         stat = rdr.write(addr, block)
         try:
             rdr.stop_crypto1()
         except Exception:
             pass
-        return stat == rdr.OK
-    except Exception:
-        return False
+        if stat == rdr.OK:
+            return {"ok": True}
+        else:
+            return {"ok": False, "error": "write_failed"}
+    except Exception as e:
+        return {"ok": False, "error": "exception", "message": str(e)}
 
 
 from .ndef_utils import ndef_message_to_blocks

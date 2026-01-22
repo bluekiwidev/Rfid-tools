@@ -128,9 +128,15 @@ socket.on('serial_data', (d) => {
   // Handle read_block response for simple UI
   if (d && d.cmd === 'read_block') {
     const addr = d.addr;
+    const ok = d.ok;
+    if (!ok) {
+      const err = d.error || d.message || 'unknown';
+      $('simple_read_result').textContent = 'ERROR: ' + err;
+      return;
+    }
     const data = d.data;
     if (!data) {
-      $('simple_read_result').textContent = '(no data / auth failed)';
+      $('simple_read_result').textContent = '(no data)';
     } else if (Array.isArray(data)) {
       $('simple_read_result').textContent = data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
     } else {

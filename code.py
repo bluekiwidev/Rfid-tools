@@ -139,11 +139,18 @@ if __name__ == "__main__":
                         uid, _ = wait_for_tag(timeout=int(cmd.get('timeout', 15)))
                     if not uid:
                         send_response({"cmd": "status", "status": "timeout", "action": "read_block", "addr": addr})
-                        send_response({"cmd": "read_block", "addr": addr, "data": None})
+                        send_response({"cmd": "read_block", "addr": addr, "data": None, "ok": False, "error": "timeout"})
                     else:
-                        block = read_block(rdr, uid, addr)
-                        send_response({"cmd": "status", "status": "read_block_complete", "action": "read_block", "addr": addr})
-                        send_response({"cmd": "read_block", "addr": addr, "data": block})
+                        res = read_block(rdr, uid, addr)
+                        if isinstance(res, dict):
+                            if res.get('ok'):
+                                send_response({"cmd": "status", "status": "read_block_complete", "action": "read_block", "addr": addr})
+                                send_response({"cmd": "read_block", "addr": addr, "data": res.get('data'), "ok": True})
+                            else:
+                                send_response({"cmd": "status", "status": "read_block_complete", "action": "read_block", "addr": addr})
+                                send_response({"cmd": "read_block", "addr": addr, "data": None, "ok": False, "error": res.get('error'), "message": res.get('message')})
+                        else:
+                            send_response({"cmd": "read_block", "addr": addr, "data": res})
 
                 elif action == 'write_block':
                     uid = cmd.get('uid')
@@ -154,12 +161,15 @@ if __name__ == "__main__":
                         uid, _ = wait_for_tag(timeout=int(cmd.get('timeout', 15)))
                     if not uid:
                         send_response({"cmd": "status", "status": "timeout", "action": "write_block", "addr": addr})
-                        send_response({"cmd": "write_block", "addr": addr, "ok": False})
+                        send_response({"cmd": "write_block", "addr": addr, "ok": False, "error": "timeout"})
                     else:
                         send_response({"cmd": "status", "status": "writing_block", "action": "write_block", "addr": addr})
-                        ok = write_block(rdr, uid, addr, data)
-                        send_response({"cmd": "status", "status": "write_block_complete", "action": "write_block", "addr": addr, "ok": ok})
-                        send_response({"cmd": "write_block", "addr": addr, "ok": ok})
+                        res = write_block(rdr, uid, addr, data)
+                        if isinstance(res, dict):
+                            send_response({"cmd": "status", "status": "write_block_complete", "action": "write_block", "addr": addr, "ok": res.get('ok', False)})
+                            send_response({"cmd": "write_block", "addr": addr, "ok": res.get('ok', False), "error": res.get('error'), "message": res.get('message')})
+                        else:
+                            send_response({"cmd": "write_block", "addr": addr, "ok": res})
 
                 elif action == 'format_ndef':
                     uid = cmd.get('uid')
