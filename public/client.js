@@ -45,6 +45,33 @@ $('disconnect').addEventListener('click', () => socket.emit('disconnect_serial')
 
 $('clear_log').addEventListener('click', () => { $('log').value = ''; });
 
+// Mode handling
+const modeSelect = $('mode');
+function updateMode() {
+  const m = modeSelect.value;
+  const simple = $('simple_ui');
+  const adv = $('advanced_ui');
+  if (simple) simple.style.display = m === 'simple' ? 'block' : 'none';
+  if (adv) adv.style.display = m === 'advanced' ? 'block' : 'none';
+}
+modeSelect.addEventListener('change', updateMode);
+updateMode();
+
+// Simple mode controls
+$('simple_read').addEventListener('click', () => {
+  // trigger dump and let the firmware auto-wait for tag
+  socket.emit('serial_cmd', { cmd: 'dump', uid: null });
+});
+
+$('simple_write').addEventListener('click', () => {
+  const blk = parseInt($('simple_block').value || '8', 10);
+  const text = $('simple_text').value || '';
+  // encode text to utf-8 bytes
+  const encoder = new TextEncoder();
+  const bytes = Array.from(encoder.encode(text)).slice(0,16);
+  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: bytes });
+});
+
 socket.on('serial_status', (s) => {
   log('STATUS: ' + JSON.stringify(s));
   if (s && s.ok) {
@@ -77,6 +104,19 @@ socket.on('serial_data', (d) => {
     return;
   }
   log('JSON: ' + JSON.stringify(d));
+
+  // Auto-fill UID on read_uid
+  if (d && d.cmd === 'read_uid') {
+    const uid = (d.uid !== undefined && d.uid !== null) ? d.uid : null;
+    if (uid) {
+      $('simple_uid').textContent = uid;
+    }
+  }
+
+  // Render dump in simple UI
+  if (d && d.cmd === 'dump') {
+    renderDump(d.uid, d.dump);
+  }
 });
 socket.on('serial_raw', (r) => { log('RAW: ' + r); });
 
@@ -121,3 +161,34 @@ socket.emit('list_ports');
 
 socket.on('connect', () => setStatus('connected', 'socket'));
 socket.on('disconnect', () => setStatus('disconnected', 'socket'));
+
+function renderDump(uid, dump) {
+  const wrap = $('dump_table_wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!dump) {
+    wrap.textContent = 'No dump data';
+    return;
+  }
+  const table = document.createElement('table');
+  table.style.width = '100%';
+  table.style.borderCollapse = 'collapse';
+  const keys = Object.keys(dump).sort((a,b)=>parseInt(a)-parseInt(b));
+  keys.forEach(k => {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td');
+    td1.style.border = '1px solid #ddd'; td1.style.padding = '4px'; td1.style.width = '60px';
+    td1.textContent = k;
+    const td2 = document.createElement('td'); td2.style.border = '1px solid #ddd'; td2.style.padding = '4px';
+    const val = dump[k];
+    if (val && val.error) td2.textContent = 'ERR: ' + val.error;
+    else if (Array.isArray(val)) td2.textContent = val.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+    else if (val === null) td2.textContent = '(no access)';
+    else td2.textContent = JSON.stringify(val);
+    tr.appendChild(td1); tr.appendChild(td2); table.appendChild(tr);
+  });
+  wrap.appendChild(table);
+  if (dump[0] && Array.isArray(dump[0])) {
+    $('simple_block0').textContent = dump[0].map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+  }
+}

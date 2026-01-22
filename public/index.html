@@ -11,7 +11,22 @@
   </style>
 </head>
 <body>
-  <h2>RFID Control Panel</h2>
+  <style>
+    .header-row { display:flex; align-items:center; justify-content:space-between; }
+    .small { font-size:90%; color:#666 }
+  </style>
+
+  <div class="header-row">
+    <h2 style="margin:0">RFID Control Panel</h2>
+    <div>
+      <label for="mode" class="small">Mode</label>
+      <select id="mode">
+        <option value="simple">Simple</option>
+        <option value="advanced">Advanced</option>
+      </select>
+    </div>
+  </div>
+
   <div id="status" style="margin-bottom:12px">
     <span id="status-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c00;margin-right:8px;vertical-align:middle"></span>
     <strong id="status-text">Disconnected</strong>
@@ -25,19 +40,46 @@
     <button id="clear_log">Clear Output</button>
   </div>
 
+  <!-- Shared actions (kept minimal for simple mode) -->
   <div class="row">
     <button id="read_uid">Read UID</button>
     <button id="dump">Dump Tag</button>
-    <input id="addr" placeholder="block (addr)" style="width:120px" />
-    <button id="read_block">Read Block</button>
-    <button id="write_block">Write Block</button>
-    <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
   </div>
 
-  <div class="row">
-    <input id="ndef_text" placeholder="NDEF text" style="width:400px" />
-    <button id="format_ndef">Format NDEF (write empty)</button>
-    <button id="write_ndef">Write NDEF</button>
+  <!-- Advanced-only controls -->
+  <div id="advanced_ui" style="border:1px solid #eee;padding:8px;margin-top:8px;display:none">
+    <h3 style="margin-top:0">Advanced Controls</h3>
+    <div class="row">
+      <input id="addr" placeholder="block (addr)" style="width:120px" />
+      <button id="read_block">Read Block</button>
+      <button id="write_block">Write Block</button>
+      <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
+    </div>
+
+    <div class="row">
+      <input id="ndef_text" placeholder="NDEF text" style="width:400px" />
+      <button id="format_ndef">Format NDEF (write empty)</button>
+      <button id="write_ndef">Write NDEF</button>
+    </div>
+  </div>
+
+  <!-- Simple mode UI -->
+  <div id="simple_ui" style="border:1px solid #ddd;padding:10px;margin-top:12px;">
+    <h3>Simple Mode</h3>
+    <div class="row">
+      <div><strong>UID:</strong> <span id="simple_uid">-</span></div>
+      <div style="margin-left:18px"><strong>Block0:</strong> <span id="simple_block0">-</span></div>
+    </div>
+    <div class="row">
+      <button id="simple_read">Read & Dump</button>
+      <input id="simple_block" placeholder="block to write" style="width:120px" />
+      <input id="simple_text" placeholder="text to write (will be utf-8)" style="width:300px" />
+      <button id="simple_write">Write Text To Block</button>
+    </div>
+    <div class="row">
+      <h4>Dump</h4>
+      <div id="dump_table_wrap" style="max-height:300px;overflow:auto;border:1px solid #eee;padding:6px;background:#fafafa"></div>
+    </div>
   </div>
 
   <h3>Serial Output</h3>

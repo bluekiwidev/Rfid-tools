@@ -105,20 +105,28 @@ def _uid_str_to_raw(uid_str):
 def dump_tag(rdr, uid_str=None):
     """Read all blocks from a MIFARE Classic 1K tag (blocks 0..63)."""
     try:
+        raw_uid = None
         if uid_str is None:
-            # try to read UID first
-            uid, _ = read_rfid(rdr, address=8)
-            uid_str = uid
-
-        raw_uid = _uid_str_to_raw(uid_str)
-        if not raw_uid:
-            return {"error": "invalid_uid"}
+            # try to get raw UID directly from the reader to avoid reconstruction issues
+            (stat, tag_type) = rdr.request(rdr.REQIDL)
+            if stat != rdr.OK:
+                return {"error": "no_tag_present"}
+            (stat, recv) = rdr.anticoll()
+            if stat != rdr.OK:
+                return {"error": "anticoll_failed"}
+            raw_uid = recv
+            uid_str = "0x" + "%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3])
+        else:
+            raw_uid = _uid_str_to_raw(uid_str)
+            if not raw_uid:
+                return {"error": "invalid_uid"}
 
         out = {}
+        # select tag once before reading blocks
+        if rdr.select_tag(raw_uid) != rdr.OK:
+            return {"error": "select_failed", "addr": 0}
         for addr in range(64):
             # authenticate per block (same key assumed)
-            if rdr.select_tag(raw_uid) != rdr.OK:
-                return {"error": "select_failed", "addr": addr}
             if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
                 out[addr] = None
                 continue
