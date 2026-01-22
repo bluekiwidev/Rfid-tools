@@ -73,6 +73,26 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('reset_pico', () => {
+    if (!port || !port.isOpen) {
+      socket.emit('serial_status', { ok: false, error: 'port_not_open' });
+      return;
+    }
+    // Toggle DTR low then high to reset CircuitPython on Pico
+    try {
+      port.set({ dtr: false }, (err) => {
+        setTimeout(() => {
+          port.set({ dtr: true }, (err2) => {
+            // report success
+            socket.emit('serial_status', { ok: true, reset: true });
+          });
+        }, 150);
+      });
+    } catch (e) {
+      socket.emit('serial_status', { ok: false, error: String(e) });
+    }
+  });
+
   socket.on('disconnect', () => {
     if (port) {
       try { port.close(); } catch (e) {}

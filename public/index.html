@@ -4,17 +4,71 @@
   <meta charset="utf-8" />
   <title>RFID Control Panel</title>
   <style>
-    body { font-family: system-ui, Arial; margin: 20px; }
+    body { 
+      font-family: system-ui, Arial; 
+      margin: 0;
+      padding: 20px;
+      background: #ECE1E9;
+      color: #2E6467;
+    }
     .row{ margin-bottom: 8px }
-    textarea{ width:100%; height:200px }
-    button{ margin-right:6px }
+    textarea{ 
+      width:100%; 
+      height:200px;
+      background: #ECE1E9;
+      border: 2px solid #5B7785;
+      color: #2E6467;
+      padding: 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+    }
+    button{ 
+      margin-right:6px;
+      background: #5B7785;
+      color: #ECE1E9;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #2E6467;
+    }
+    input, select {
+      background: #ECE1E9;
+      border: 2px solid #5B7785;
+      color: #2E6467;
+      padding: 6px 10px;
+      border-radius: 4px;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #C29762;
+    }
+    h2, h3, h4 {
+      color: #2E6467;
+    }
+    .header-row { 
+      display:flex; 
+      align-items:center; 
+      justify-content:space-between;
+      background: #5B7785;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .header-row h2 {
+      color: #ECE1E9;
+      margin: 0;
+    }
+    .small { 
+      font-size:90%; 
+      color: #ECE1E9;
+    }
   </style>
 </head>
 <body>
-  <style>
-    .header-row { display:flex; align-items:center; justify-content:space-between; }
-    .small { font-size:90%; color:#666 }
-  </style>
 
   <div class="header-row">
     <h2 style="margin:0">RFID Control Panel</h2>
@@ -28,16 +82,18 @@
     </div>
   </div>
 
-  <div id="status" style="margin-bottom:12px">
+  <div id="status" style="margin-bottom:12px;background:#5B7785;padding:12px;border-radius:6px">
     <span id="status-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c00;margin-right:8px;vertical-align:middle"></span>
-    <strong id="status-text">Disconnected</strong>
-    <span id="status-detail" style="margin-left:12px;color:#666;font-size:90%"></span>
+    <strong id="status-text" style="color:#ECE1E9">Disconnected</strong>
+    <span id="status-detail" style="margin-left:12px;color:#ECE1E9;font-size:90%;opacity:0.8"></span>
+    <span id="reader-status" style="margin-left:18px;padding:6px 10px;border-radius:6px;background:#ECE1E9;color:#2E6467;font-weight:600">idle</span>
   </div>
   <div class="row">
     <button id="list">List Serial Ports</button>
     <select id="ports"></select>
     <button id="connect">Connect</button>
     <button id="disconnect">Disconnect</button>
+    <button id="reset_pico">Reset Pico</button>
     <button id="clear_log">Clear Output</button>
   </div>
 
@@ -48,8 +104,8 @@
   </div>
 
   <!-- Advanced-only controls -->
-  <div id="advanced_ui" style="border:1px solid #eee;padding:8px;margin-top:8px;display:none">
-    <h3 style="margin-top:0">Advanced Controls</h3>
+  <div id="advanced_ui" style="border:2px solid #5B7785;background:white;padding:12px;margin-top:12px;border-radius:6px;display:none">
+    <h3 style="margin-top:0;color:#2E6467">Advanced Controls</h3>
     <div class="row">
       <input id="addr" placeholder="block (addr)" style="width:120px" />
       <button id="read_block">Read Block</button>
@@ -65,8 +121,8 @@
   </div>
 
   <!-- Simple mode UI -->
-  <div id="simple_ui" style="border:1px solid #ddd;padding:10px;margin-top:12px;">
-    <h3>Simple Mode</h3>
+  <div id="simple_ui" style="border:2px solid #5B7785;background:white;padding:12px;margin-top:12px;border-radius:6px">
+    <h3 style="color:#2E6467">Simple Mode</h3>
     <div class="row">
       <div><strong>UID:</strong> <span id="simple_uid">-</span></div>
       <div style="margin-left:18px"><strong>Block0:</strong> <span id="simple_block0">-</span></div>
@@ -81,12 +137,12 @@
     </div>
     <div class="row">
       <h4>Dump</h4>
-      <div id="dump_table_wrap" style="max-height:300px;overflow:auto;border:1px solid #eee;padding:6px;background:#fafafa"></div>
+      <div id="dump_table_wrap" style="max-height:300px;overflow:auto;border:2px solid #5B7785;padding:8px;background:#ECE1E9;border-radius:4px"></div>
     </div>
   </div>
 
   <h3>Serial Output</h3>
-  <textarea id="log"></textarea>
+  <textarea id="log" readonly></textarea>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>

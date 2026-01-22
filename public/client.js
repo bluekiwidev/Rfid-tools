@@ -29,6 +29,26 @@ function setStatus(state, detail) {
   }
 }
 
+function setReaderState(state) {
+  const el = $('reader-status');
+  if (!el) return;
+  const s = (state || '').toLowerCase();
+  let text = 'idle';
+  let bg = '#ECE1E9';
+  let color = '#2E6467';
+  if (s === 'ready') { text = 'ready'; bg = '#dff0d8'; color = '#267326'; }
+  else if (s === 'waiting' || s === 'place_tag' || s === 'waiting_for_tag') { text = 'waiting for card'; bg = '#fff3cd'; color = '#856404'; }
+  else if (s === 'reading' || s === 'read') { text = 'reading'; bg = '#d1ecf1'; color = '#0c5460'; }
+  else if (s.indexOf('write') !== -1 || s === 'writing_block' || s === 'writing_ndef' || s === 'writing') { text = 'writing'; bg = '#f8d7da'; color = '#721c24'; }
+  else if (s === 'busy' || s === 'formatting_ndef') { text = 'busy'; bg = '#e2e3e5'; color = '#6c757d'; }
+  else if (s === 'timeout') { text = 'timeout'; bg = '#f8d7da'; color = '#721c24'; }
+  else if (s === 'dump_complete' || s === 'read_complete' || s === 'write_block_complete' || s === 'write_ndef_complete') { text = 'ready'; bg = '#dff0d8'; color = '#267326'; }
+  else { text = state || 'idle'; }
+  el.textContent = text;
+  el.style.background = bg;
+  el.style.color = color;
+}
+
 $('list').addEventListener('click', () => socket.emit('list_ports'));
 
 socket.on('ports', (ports) => {
@@ -48,6 +68,20 @@ $('connect').addEventListener('click', () => {
 });
 
 $('disconnect').addEventListener('click', () => socket.emit('disconnect_serial'));
+
+// Reset Pico (UI clear + request server to toggle DTR)
+$('reset_pico').addEventListener('click', () => {
+  // clear UI state
+  $('log').value = '';
+  $('simple_uid').textContent = '-';
+  $('simple_block0').textContent = '-';
+  $('simple_read_result').textContent = '-';
+  $('dump_table_wrap').innerHTML = '';
+  modeSelect.value = 'simple'; updateMode();
+  setReaderState('idle');
+  // ask server to reset the attached Pico
+  socket.emit('reset_pico');
+});
 
 $('clear_log').addEventListener('click', () => { $('log').value = ''; });
 
@@ -93,10 +127,13 @@ socket.on('serial_status', (s) => {
     // show connected
     const port = $('ports').value || '';
     setStatus('connected', port);
+    setReaderState('ready');
   } else if (s && s.error) {
     setStatus('error', s.error);
+    setReaderState('idle');
   } else {
     setStatus('disconnected', '');
+    setReaderState('idle');
   }
 });
 
@@ -115,6 +152,7 @@ socket.on('serial_data', (d) => {
     else if (s === 'formatting_ndef') friendly = 'Formatting NDEF...';
     else if (s === 'writing_ndef') friendly = 'Writing NDEF...';
     setStatus('connected', friendly);
+    setReaderState(s);
     if (isVerbose()) log('STATUS: ' + pretty(d));
     return;
   }
@@ -169,6 +207,17 @@ socket.on('serial_data', (d) => {
   }
 });
 socket.on('serial_raw', (r) => { log('RAW: ' + r); });
+// interpret plain text 'ready' from firmware
+socket.on('serial_raw', (r) => {
+  try {
+    const t = String(r || '').trim();
+    if (t.toLowerCase() === 'ready') {
+      setReaderState('ready');
+      if (isVerbose()) log('FW: ready');
+      return;
+    }
+  } catch (e) {}
+});
 
 $('read_uid').addEventListener('click', () => {
   socket.emit('serial_cmd', { cmd: 'read_uid' });
