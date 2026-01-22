@@ -10,24 +10,27 @@ def _select_with_fallback(rdr, raw_uid):
     """
     if not raw_uid:
         return False, raw_uid
-    # try the full UID (may include BCC)
-    for _ in range(3):
-        try:
-            if rdr.select_tag(raw_uid) == rdr.OK:
-                return True, raw_uid
-        except Exception:
-            pass
-        try:
-            time.sleep(0.02)
-        except Exception:
-            pass
-    # fallback to first 4 bytes (no BCC)
-    if len(raw_uid) >= 5:
-        short = raw_uid[:4]
+    # If we only have 4 UID bytes, try the computed BCC variant first
+    candidates = []
+    if len(raw_uid) == 4:
+        bcc = 0
+        for b in raw_uid:
+            bcc ^= b
+        candidates.append(raw_uid + [bcc])
+        candidates.append(raw_uid)
+    elif len(raw_uid) >= 5:
+        # prefer whatever was provided (often includes BCC), then try the 4-byte short form
+        candidates.append(raw_uid)
+        candidates.append(raw_uid[:4])
+    else:
+        # unexpected length, just try as-is
+        candidates.append(raw_uid)
+
+    for cand in candidates:
         for _ in range(3):
             try:
-                if rdr.select_tag(short) == rdr.OK:
-                    return True, short
+                if rdr.select_tag(cand) == rdr.OK:
+                    return True, cand
             except Exception:
                 pass
             try:
@@ -160,6 +163,8 @@ def dump_tag(rdr, uid_str=None):
         sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"error": "select_failed", "addr": 0, "raw_uid": raw_uid}
+        # use the UID that actually succeeded for subsequent auth/read
+        raw_uid = used_uid
         for addr in range(64):
             # authenticate per block (same key assumed)
             if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
@@ -198,6 +203,8 @@ def read_block(rdr, uid_str, addr):
         sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
+        # use selected UID for auth
+        raw_uid = used_uid
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         data = rdr.read(addr)
@@ -245,6 +252,8 @@ def write_block(rdr, uid_str, addr, data):
         sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
+        # use selected UID for auth/write
+        raw_uid = used_uid
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
             return {"ok": False, "error": "auth_failed"}
         stat = rdr.write(addr, block)
