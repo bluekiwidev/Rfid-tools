@@ -3,6 +3,12 @@ const socket = io();
 const $ = (id) => document.getElementById(id);
 const log = (t) => { $('log').value += t + '\n'; $('log').scrollTop = $('log').scrollHeight; };
 
+function pretty(obj) {
+  try { return JSON.stringify(obj, null, 2); } catch (e) { return String(obj); }
+}
+
+function isVerbose() { return !!$('verbose') && $('verbose').checked; }
+
 function setStatus(state, detail) {
   const dot = $('status-dot');
   const txt = $('status-text');
@@ -81,7 +87,8 @@ $('simple_read_block').addEventListener('click', () => {
 });
 
 socket.on('serial_status', (s) => {
-  log('STATUS: ' + JSON.stringify(s));
+  // show status in status area; log only when verbose
+  if (isVerbose()) log('STATUS: ' + pretty(s));
   if (s && s.ok) {
     // show connected
     const port = $('ports').value || '';
@@ -108,10 +115,27 @@ socket.on('serial_data', (d) => {
     else if (s === 'formatting_ndef') friendly = 'Formatting NDEF...';
     else if (s === 'writing_ndef') friendly = 'Writing NDEF...';
     setStatus('connected', friendly);
-    log('STATUS: ' + JSON.stringify(d));
+    if (isVerbose()) log('STATUS: ' + pretty(d));
     return;
   }
-  log('JSON: ' + JSON.stringify(d));
+
+  // for non-status messages pretty-print and show compact
+  // keep minimal by default, full pretty when verbose
+  if (isVerbose()) {
+    log(pretty(d));
+  } else {
+    // show one-line summary for common commands
+    try {
+      const summaryCmd = d.cmd || 'msg';
+      if (d.cmd === 'read_uid') log(`${summaryCmd}: ${d.uid}`);
+      else if (d.cmd === 'dump') log(`${summaryCmd}: ${d.uid} (dump ${d.dump ? Object.keys(d.dump).length : 0} blocks)`);
+      else if (d.cmd === 'read_block') log(`${summaryCmd}: addr=${d.addr} ${d.ok ? 'ok' : 'err'}`);
+      else if (d.cmd === 'write_block') log(`${summaryCmd}: addr=${d.addr} ${d.ok ? 'ok' : 'err'}`);
+      else log(`${summaryCmd}: ${JSON.stringify(d)}`);
+    } catch (e) {
+      log(JSON.stringify(d));
+    }
+  }
 
   // Auto-fill UID on read_uid
   if (d && d.cmd === 'read_uid') {
