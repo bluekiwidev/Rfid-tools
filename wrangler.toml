@@ -1,0 +1,11 @@
+# Wrangler configuration for deploying the `public/` site to Cloudflare Workers Sites or Pages.
+# Replace the placeholders below with your Cloudflare Account ID and any desired name.
+
+name = "rfid-tools"
+account_id = "YOUR_ACCOUNT_ID_HERE"
+# Use `site` to publish a static site from ./public
+type = "javascript"
+
+[site]
+  bucket = "./public"
+  include = ["**/*"]
