@@ -262,9 +262,22 @@ def dump_tag(rdr, uid_str=None, protocol='auto', key=None):
         raw_uid = used_uid
         for addr in range(64):
             # authenticate per block (same key assumed)
+            # Some tags require re-select before each auth; retry selection+auth once on failure.
             if rdr.auth(rdr.AUTHENT1A, addr, key_bytes, raw_uid) != rdr.OK:
-                out[addr] = None
-                continue
+                # try re-selecting and use returned UID
+                try:
+                    sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
+                    if sel_ok:
+                        raw_uid = used_uid
+                        if rdr.auth(rdr.AUTHENT1A, addr, key_bytes, raw_uid) != rdr.OK:
+                            out[addr] = None
+                            continue
+                    else:
+                        out[addr] = None
+                        continue
+                except Exception:
+                    out[addr] = None
+                    continue
             data = rdr.read(addr)
             try:
                 rdr.stop_crypto1()
