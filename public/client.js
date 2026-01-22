@@ -1,6 +1,66 @@
 const socket = io();
 const pending = {};
 
+// Web Serial state
+let webserialPort = null;
+let webserialWriter = null;
+let webserialReader = null;
+let webserialReadLoop = null;
+
+function webserialSendLine(line) {
+  if (!webserialWriter) throw new Error('not connected');
+  const enc = new TextEncoder();
+  return webserialWriter.write(enc.encode(line + '\n'));
+}
+
+async function webserialStartReader() {
+  if (!webserialPort) return;
+  try {
+    const reader = webserialPort.readable.getReader();
+    webserialReader = reader;
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      buf += new TextDecoder().decode(value);
+      let idx;
+      while ((idx = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line) continue;
+        try {
+          const obj = JSON.parse(line);
+          handleSerialData(obj);
+        } catch (e) {
+          // fallback: raw text
+          handleSerialRaw(line);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('webserial read loop ended', e);
+  } finally {
+    try { if (webserialReader) { webserialReader.releaseLock(); webserialReader = null; } } catch (e) {}
+  }
+}
+
+async function webserialConnect() {
+  if (!('serial' in navigator)) throw new Error('Web Serial not supported');
+  webserialPort = await navigator.serial.requestPort();
+  await webserialPort.open({ baudRate: 115200 });
+  if (webserialPort.writable) {
+    webserialWriter = webserialPort.writable.getWriter();
+  }
+  webserialStartReader();
+}
+
+async function webserialDisconnect() {
+  try { if (webserialReader) { await webserialReader.cancel(); webserialReader.releaseLock(); webserialReader = null; } } catch (e) {}
+  try { if (webserialWriter) { await webserialWriter.releaseLock(); webserialWriter = null; } } catch (e) {}
+  try { if (webserialPort) { await webserialPort.close(); webserialPort = null; } } catch (e) {}
+}
+
 function sendCmdAwait(cmd, timeout=12000) {
   return new Promise((resolve, reject) => {
     const txn = 't' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
@@ -9,7 +69,18 @@ function sendCmdAwait(cmd, timeout=12000) {
       if (pending[txn]) { delete pending[txn]; reject(new Error('timeout')); }
     }, timeout);
     pending[txn] = { resolve, reject, to };
-    socket.emit('serial_cmd', cmd);
+    // send via selected transport
+    const mode = (document.getElementById('conn_mode') || {}).value || 'server';
+    if (mode === 'webserial' && webserialPort && webserialWriter) {
+      try {
+        webserialSendLine(JSON.stringify(cmd)).catch(err => {
+          // if send fails, reject immediately
+          clearTimeout(to); delete pending[txn]; reject(err);
+        });
+      } catch (e) { clearTimeout(to); delete pending[txn]; reject(e); }
+    } else {
+      socket.emit('serial_cmd', cmd);
+    }
   });
 }
 
@@ -67,6 +138,15 @@ function setReaderState(state) {
 
 $('list').addEventListener('click', () => socket.emit('list_ports'));
 
+function sendCmd(cmd) {
+  const mode = (document.getElementById('conn_mode') || {}).value || 'server';
+  if (mode === 'webserial' && webserialPort && webserialWriter) {
+    try { webserialSendLine(JSON.stringify(cmd)); } catch (e) { log('WebSerial send error: ' + e); }
+  } else {
+    socket.emit('serial_cmd', cmd);
+  }
+}
+
 socket.on('ports', (ports) => {
   const sel = $('ports'); sel.innerHTML = '';
   ports.forEach(p => {
@@ -76,14 +156,37 @@ socket.on('ports', (ports) => {
   });
 });
 
-$('connect').addEventListener('click', () => {
+$('connect').addEventListener('click', async () => {
+  const mode = ($('conn_mode') || {}).value || 'server';
+  if (mode === 'webserial') {
+    try {
+      setStatus('connecting', 'webserial');
+      await webserialConnect();
+      setStatus('connected', 'webserial');
+      setReaderState('ready');
+    } catch (e) {
+      console.error(e);
+      setStatus('error', String(e));
+      alert('Web Serial connect failed: ' + e);
+    }
+    return;
+  }
   const p = $('ports').value;
   if (!p) { alert('select port'); return }
   setStatus('connecting', p);
   socket.emit('connect_serial', { path: p });
 });
 
-$('disconnect').addEventListener('click', () => socket.emit('disconnect_serial'));
+$('disconnect').addEventListener('click', async () => {
+  const mode = ($('conn_mode') || {}).value || 'server';
+  if (mode === 'webserial') {
+    await webserialDisconnect();
+    setStatus('disconnected', 'webserial');
+    setReaderState('idle');
+    return;
+  }
+  socket.emit('disconnect_serial');
+});
 
 // Reset Pico (UI clear + request server to toggle DTR)
 $('reset_pico').addEventListener('click', () => {
@@ -116,7 +219,7 @@ updateMode();
 // Simple mode controls
 $('simple_read').addEventListener('click', () => {
   // trigger dump and let the firmware auto-wait for tag
-  socket.emit('serial_cmd', { cmd: 'dump', uid: null, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'dump', uid: null, protocol: getProtocol(), key: getKey() });
 });
 
 $('simple_write').addEventListener('click', async () => {
@@ -175,7 +278,7 @@ $('simple_write').addEventListener('click', async () => {
 $('simple_read_block').addEventListener('click', () => {
   const blk = parseInt($('simple_block').value || '8', 10);
   // ask firmware to wait for tag and read block
-  socket.emit('serial_cmd', { cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol(), key: getKey() });
   $('simple_read_result').textContent = 'waiting...';
 });
 
@@ -184,7 +287,7 @@ $('simple_erase').addEventListener('click', () => {
   const blk = parseInt($('simple_block').value || '8', 10);
   if (!confirm('Erase block ' + blk + '? This will write 16 zero bytes.')) return;
   const zeros = new Array(16).fill(0);
-  socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: zeros, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'write_block', uid: null, addr: blk, data: zeros, protocol: getProtocol(), key: getKey() });
 });
 
 socket.on('serial_status', (s) => {
@@ -203,8 +306,21 @@ socket.on('serial_status', (s) => {
     setReaderState('idle');
   }
 });
+function handleSerialRaw(r) {
+  try {
+    log('RAW: ' + r);
+  } catch (e) {}
+  try {
+    const t = String(r || '').trim();
+    if (t.toLowerCase() === 'ready') {
+      setReaderState('ready');
+      if (isVerbose()) log('FW: ready');
+      return;
+    }
+  } catch (e) {}
+}
 
-socket.on('serial_data', (d) => {
+function handleSerialData(d) {
   // resolve pending promises for non-status responses
   try {
     if (d && d.txn && pending[d.txn] && d.cmd !== 'status') {
@@ -297,7 +413,8 @@ socket.on('serial_data', (d) => {
       $('simple_read_result').textContent = JSON.stringify(data);
     }
   }
-});
+}
+socket.on('serial_data', handleSerialData);
 socket.on('serial_raw', (r) => { log('RAW: ' + r); });
 // interpret plain text 'ready' from firmware
 socket.on('serial_raw', (r) => {
@@ -312,20 +429,20 @@ socket.on('serial_raw', (r) => {
 });
 
 $('read_uid').addEventListener('click', () => {
-  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
 });
 
 $('dump').addEventListener('click', () => {
-  socket.emit('serial_cmd', { cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
   // after UID read, user can press dump with the UID from output; simple UI for demo
   const uid = prompt('Enter UID (0x...) from read_uid output (or leave blank to auto)');
-  socket.emit('serial_cmd', { cmd: 'dump', uid: uid || null, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'dump', uid: uid || null, protocol: getProtocol(), key: getKey() });
 });
 
 $('read_block').addEventListener('click', () => {
   const addr = $('addr').value || '8';
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol(), key: getKey() });
 });
 
 $('write_block').addEventListener('click', () => {
@@ -333,22 +450,22 @@ $('write_block').addEventListener('click', () => {
   const raw = $('write_data').value || '';
   const arr = raw.split(',').map(s => parseInt(s.trim(),10)||0);
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol(), key: getKey() });
 });
 
 $('format_ndef').addEventListener('click', () => {
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'format_ndef', uid: uid || null, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'format_ndef', uid: uid || null, protocol: getProtocol(), key: getKey() });
 });
 
 $('write_ndef').addEventListener('click', () => {
   const text = $('ndef_text').value || 'Hello';
   const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  socket.emit('serial_cmd', { cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol(), key: getKey() });
+  sendCmd({ cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol(), key: getKey() });
 });
 
-// auto-list ports on load
-socket.emit('list_ports');
+// auto-list ports on load (server mode only)
+if ((document.getElementById('conn_mode') || {}).value !== 'webserial') socket.emit('list_ports');
 
 socket.on('connect', () => setStatus('connected', 'socket'));
 socket.on('disconnect', () => setStatus('disconnected', 'socket'));
