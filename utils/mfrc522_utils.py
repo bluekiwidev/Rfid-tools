@@ -30,10 +30,9 @@ def _key_to_bytes(key, rdr):
             return (rdr.KEY, None)
         # Try comma or space separated numbers first
         if ',' in s or ' ' in s or ':' in s or '-' in s:
-            # split on common separators
-            import re
-            parts = re.split('[,:\-\s]+', s)
-            parts = [p for p in parts if p]
+            # split on common separators without relying on `re` (not always available)
+            sep_replaced = s.replace(',', ' ').replace(':', ' ').replace('-', ' ')
+            parts = [p for p in sep_replaced.split(' ') if p]
             try:
                 kb = [int(p, 0) & 0xFF for p in parts]
                 if len(kb) != 6:
