@@ -11,34 +11,68 @@ def _select_with_fallback(rdr, raw_uid):
     Returns (True, used_uid) on success or (False, raw_uid) on failure.
     """
     if not raw_uid:
-        return False, raw_uid
-    # If we only have 4 UID bytes, try the computed BCC variant first
-    candidates = []
-    if len(raw_uid) == 4:
-        bcc = 0
-        for b in raw_uid:
-            bcc ^= b
-        candidates.append(raw_uid + [bcc])
-        candidates.append(raw_uid)
-    elif len(raw_uid) >= 5:
-        # prefer whatever was provided (often includes BCC), then try the 4-byte short form
-        candidates.append(raw_uid)
-        candidates.append(raw_uid[:4])
-    else:
-        # unexpected length, just try as-is
-        candidates.append(raw_uid)
+        # try to get one from the reader first
+        try:
+            (stat, tag_type) = rdr.request(rdr.REQIDL)
+            if stat == rdr.OK:
+                (stat, recv) = rdr.anticoll()
+                if stat == rdr.OK:
+                    raw_uid = recv
+        except Exception:
+            pass
+    # perform a few selection cycles; between cycles try to refresh anticollision
+    for cycle in range(3):
+        if not raw_uid:
+            # nothing to try this cycle
+            try:
+                (stat, tag_type) = rdr.request(rdr.REQIDL)
+                if stat == rdr.OK:
+                    (stat, recv) = rdr.anticoll()
+                    if stat == rdr.OK:
+                        raw_uid = recv
+            except Exception:
+                pass
+        if not raw_uid:
+            # nothing available
+            time.sleep(0.02)
+            continue
 
-    for cand in candidates:
-        for _ in range(3):
-            try:
-                if rdr.select_tag(cand) == rdr.OK:
-                    return True, cand
-            except Exception:
-                pass
-            try:
-                time.sleep(0.02)
-            except Exception:
-                pass
+        # Build candidate selection payloads for this raw_uid
+        candidates = []
+        if len(raw_uid) == 4:
+            bcc = 0
+            for b in raw_uid:
+                bcc ^= b
+            candidates.append(raw_uid + [bcc])
+            candidates.append(raw_uid)
+        elif len(raw_uid) >= 5:
+            candidates.append(raw_uid)
+            candidates.append(raw_uid[:4])
+        else:
+            candidates.append(raw_uid)
+
+        for cand in candidates:
+            for _ in range(3):
+                try:
+                    if rdr.select_tag(cand) == rdr.OK:
+                        return True, cand
+                except Exception:
+                    pass
+                try:
+                    time.sleep(0.02)
+                except Exception:
+                    pass
+
+        # refresh UID before next cycle (some tags need a fresh anticollision)
+        try:
+            (stat, tag_type) = rdr.request(rdr.REQIDL)
+            if stat == rdr.OK:
+                (stat, recv) = rdr.anticoll()
+                if stat == rdr.OK:
+                    raw_uid = recv
+        except Exception:
+            pass
+
     return False, raw_uid
 
 
