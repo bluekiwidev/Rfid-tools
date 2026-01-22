@@ -72,6 +72,14 @@ $('simple_write').addEventListener('click', () => {
   socket.emit('serial_cmd', { cmd: 'write_block', uid: null, addr: blk, data: bytes });
 });
 
+// Simple read-block button
+$('simple_read_block').addEventListener('click', () => {
+  const blk = parseInt($('simple_block').value || '8', 10);
+  // ask firmware to wait for tag and read block
+  socket.emit('serial_cmd', { cmd: 'read_block', uid: null, addr: blk });
+  $('simple_read_result').textContent = 'waiting...';
+});
+
 socket.on('serial_status', (s) => {
   log('STATUS: ' + JSON.stringify(s));
   if (s && s.ok) {
@@ -116,6 +124,18 @@ socket.on('serial_data', (d) => {
   // Render dump in simple UI
   if (d && d.cmd === 'dump') {
     renderDump(d.uid, d.dump);
+  }
+  // Handle read_block response for simple UI
+  if (d && d.cmd === 'read_block') {
+    const addr = d.addr;
+    const data = d.data;
+    if (!data) {
+      $('simple_read_result').textContent = '(no data / auth failed)';
+    } else if (Array.isArray(data)) {
+      $('simple_read_result').textContent = data.map(b => ('0' + (b & 0xFF).toString(16)).slice(-2)).join(' ');
+    } else {
+      $('simple_read_result').textContent = JSON.stringify(data);
+    }
   }
 });
 socket.on('serial_raw', (r) => { log('RAW: ' + r); });

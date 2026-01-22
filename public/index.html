@@ -72,9 +72,11 @@
     </div>
     <div class="row">
       <button id="simple_read">Read & Dump</button>
-      <input id="simple_block" placeholder="block to write" style="width:120px" />
-      <input id="simple_text" placeholder="text to write (will be utf-8)" style="width:300px" />
+      <input id="simple_block" placeholder="block number" style="width:120px" />
+      <button id="simple_read_block">Read Block</button>
+      <input id="simple_text" placeholder="text to write (will be utf-8) or comma bytes" style="width:300px" />
       <button id="simple_write">Write Text To Block</button>
+      <div style="margin-top:6px">Read result: <span id="simple_read_result">-</span></div>
     </div>
     <div class="row">
       <h4>Dump</h4>
