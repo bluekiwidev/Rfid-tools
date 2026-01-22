@@ -92,7 +92,12 @@ def write_rfid(rdr, uid, data, address=8):
 
 def _uid_str_to_raw(uid_str):
     try:
-        return [int(uid_str[i:i+2], 16) for i in range(2, 10, 2)]
+        parts = [int(uid_str[i:i+2], 16) for i in range(2, 10, 2)]
+        # compute BCC (XOR of first 4 UID bytes) as the 5th byte expected by select_tag
+        bcc = 0
+        for b in parts:
+            bcc ^= b
+        return parts + [bcc]
     except Exception:
         return None
 
