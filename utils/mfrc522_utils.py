@@ -3,6 +3,8 @@ import time
 
 tag_types = {0: "nothing", 16: "MIFARE Classic 1K"}
 
+SUPPORTED_PROTOCOLS = ('auto', 'mifare', 'ntag')
+
 
 def _select_with_fallback(rdr, raw_uid):
     """Try selecting tag using provided UID (with BCC) then fallback to 4-byte UID.
@@ -140,8 +142,15 @@ def _uid_str_to_raw(uid_str):
         return None
 
 
-def dump_tag(rdr, uid_str=None):
-    """Read all blocks from a MIFARE Classic 1K tag (blocks 0..63)."""
+def dump_tag(rdr, uid_str=None, protocol='auto'):
+    """Read all blocks from a MIFARE Classic 1K tag (blocks 0..63).
+    `protocol` may be 'auto', 'mifare' or 'ntag'. Currently only 'auto' and 'mifare' are
+    supported; 'ntag' will return an error until a dedicated NTAG flow is implemented.
+    """
+    if protocol not in SUPPORTED_PROTOCOLS:
+        return {"error": "unsupported_protocol", "protocol": protocol}
+    if protocol == 'ntag':
+        return {"error": "unsupported_protocol", "protocol": protocol}
     try:
         raw_uid = None
         if uid_str is None:
@@ -184,8 +193,12 @@ def dump_tag(rdr, uid_str=None):
         return {"error": str(e)}
 
 
-def read_block(rdr, uid_str, addr):
+def read_block(rdr, uid_str, addr, protocol='auto'):
     try:
+        if protocol not in SUPPORTED_PROTOCOLS:
+            return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
+        if protocol == 'ntag':
+            return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
         # If uid_str is None, get raw UID directly from reader
         if uid_str is None:
             (stat, tag_type) = rdr.request(rdr.REQIDL)
@@ -220,8 +233,12 @@ def read_block(rdr, uid_str, addr):
         return {"ok": False, "error": "exception", "message": str(e)}
 
 
-def write_block(rdr, uid_str, addr, data):
+def write_block(rdr, uid_str, addr, data, protocol='auto'):
     try:
+        if protocol not in SUPPORTED_PROTOCOLS:
+            return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
+        if protocol == 'ntag':
+            return {"ok": False, "error": "unsupported_protocol", "protocol": protocol}
         # allow passing comma-separated string too
         if isinstance(data, str):
             try:
@@ -272,25 +289,29 @@ def write_block(rdr, uid_str, addr, data):
 from .ndef_utils import ndef_message_to_blocks
 
 
-def format_ndef(rdr, uid_str, start_block=4):
+def format_ndef(rdr, uid_str, start_block=4, protocol='auto'):
     """Write an empty NDEF TLV container starting at start_block."""
     try:
+        if protocol not in SUPPORTED_PROTOCOLS or protocol == 'ntag':
+            return False
         blocks = ndef_message_to_blocks(b'')
         # write blocks sequentially
         for i, blk in enumerate(blocks):
-            if not write_block(rdr, uid_str, start_block + i, blk):
+            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol):
                 return False
         return True
     except Exception:
         return False
 
 
-def write_ndef(rdr, uid_str, text, start_block=4):
+def write_ndef(rdr, uid_str, text, start_block=4, protocol='auto'):
     try:
+        if protocol not in SUPPORTED_PROTOCOLS or protocol == 'ntag':
+            return False
         payload = text.encode('utf-8')
         blocks = ndef_message_to_blocks(payload, text=True)
         for i, blk in enumerate(blocks):
-            if not write_block(rdr, uid_str, start_block + i, blk):
+            if not write_block(rdr, uid_str, start_block + i, blk, protocol=protocol):
                 return False
         return True
     except Exception:

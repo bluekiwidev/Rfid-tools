@@ -127,7 +127,7 @@ if __name__ == "__main__":
                         send_response({"cmd": "dump", "uid": None, "dump": None})
                     else:
                         send_response({"cmd": "status", "status": "reading", "action": "dump", "uid": uid})
-                        res = dump_tag(rdr, uid)
+                        res = dump_tag(rdr, uid, protocol=cmd.get('protocol', 'auto'))
                         send_response({"cmd": "status", "status": "dump_complete", "action": "dump", "uid": uid})
                         send_response({"cmd": "dump", "uid": uid, "dump": res})
 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
                         send_response({"cmd": "status", "status": "timeout", "action": "read_block", "addr": addr})
                         send_response({"cmd": "read_block", "addr": addr, "data": None, "ok": False, "error": "timeout"})
                     else:
-                        res = read_block(rdr, uid, addr)
+                        res = read_block(rdr, uid, addr, protocol=cmd.get('protocol', 'auto'))
                         if isinstance(res, dict):
                             if res.get('ok'):
                                 send_response({"cmd": "status", "status": "read_block_complete", "action": "read_block", "addr": addr})
@@ -164,7 +164,7 @@ if __name__ == "__main__":
                         send_response({"cmd": "write_block", "addr": addr, "ok": False, "error": "timeout"})
                     else:
                         send_response({"cmd": "status", "status": "writing_block", "action": "write_block", "addr": addr})
-                        res = write_block(rdr, uid, addr, data)
+                        res = write_block(rdr, uid, addr, data, protocol=cmd.get('protocol', 'auto'))
                         if isinstance(res, dict):
                             send_response({"cmd": "status", "status": "write_block_complete", "action": "write_block", "addr": addr, "ok": res.get('ok', False)})
                             send_response({"cmd": "write_block", "addr": addr, "ok": res.get('ok', False), "error": res.get('error'), "message": res.get('message')})
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                         send_response({"cmd": "format_ndef", "ok": False})
                     else:
                         send_response({"cmd": "status", "status": "formatting_ndef", "action": "format_ndef"})
-                        ok = format_ndef(rdr, uid, start)
+                        ok = format_ndef(rdr, uid, start, protocol=cmd.get('protocol', 'auto'))
                         send_response({"cmd": "status", "status": "format_ndef_complete", "action": "format_ndef", "ok": ok})
                         send_response({"cmd": "format_ndef", "ok": ok})
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
                         send_response({"cmd": "write_ndef", "ok": False})
                     else:
                         send_response({"cmd": "status", "status": "writing_ndef", "action": "write_ndef"})
-                        ok = write_ndef(rdr, uid, text, start)
+                        ok = write_ndef(rdr, uid, text, start, protocol=cmd.get('protocol', 'auto'))
                         send_response({"cmd": "status", "status": "write_ndef_complete", "action": "write_ndef", "ok": ok})
                         send_response({"cmd": "write_ndef", "ok": ok})
 
