@@ -1,5 +1,40 @@
 
+import time
+
 tag_types = {0: "nothing", 16: "MIFARE Classic 1K"}
+
+
+def _select_with_fallback(rdr, raw_uid):
+    """Try selecting tag using provided UID (with BCC) then fallback to 4-byte UID.
+    Returns (True, used_uid) on success or (False, raw_uid) on failure.
+    """
+    if not raw_uid:
+        return False, raw_uid
+    # try the full UID (may include BCC)
+    for _ in range(3):
+        try:
+            if rdr.select_tag(raw_uid) == rdr.OK:
+                return True, raw_uid
+        except Exception:
+            pass
+        try:
+            time.sleep(0.02)
+        except Exception:
+            pass
+    # fallback to first 4 bytes (no BCC)
+    if len(raw_uid) >= 5:
+        short = raw_uid[:4]
+        for _ in range(3):
+            try:
+                if rdr.select_tag(short) == rdr.OK:
+                    return True, short
+            except Exception:
+                pass
+            try:
+                time.sleep(0.02)
+            except Exception:
+                pass
+    return False, raw_uid
 
 
 def read_rfid(rdr, address=8):
@@ -122,27 +157,7 @@ def dump_tag(rdr, uid_str=None):
                 return {"error": "invalid_uid"}
 
         out = {}
-        def _select_with_fallback(raw_uid):
-            # Try selecting with the provided UID bytes; if that fails, try only first 4 bytes (no BCC)
-            for attempt in range(3):
-                if rdr.select_tag(raw_uid) == rdr.OK:
-                    return True, raw_uid
-                try:
-                    time.sleep(0.02)
-                except Exception:
-                    pass
-            if raw_uid and len(raw_uid) >= 5:
-                short = raw_uid[:4]
-                for attempt in range(3):
-                    if rdr.select_tag(short) == rdr.OK:
-                        return True, short
-                    try:
-                        time.sleep(0.02)
-                    except Exception:
-                        pass
-            return False, raw_uid
-
-        sel_ok, used_uid = _select_with_fallback(raw_uid)
+        sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"error": "select_failed", "addr": 0, "raw_uid": raw_uid}
         for addr in range(64):
@@ -180,29 +195,7 @@ def read_block(rdr, uid_str, addr):
             if not raw_uid:
                 return {"ok": False, "error": "invalid_uid"}
 
-        # try selecting with fallback
-        def _select_with_fallback_local(raw_uid):
-            if not raw_uid:
-                return False, raw_uid
-            for _ in range(3):
-                if rdr.select_tag(raw_uid) == rdr.OK:
-                    return True, raw_uid
-                try:
-                    time.sleep(0.02)
-                except Exception:
-                    pass
-            if len(raw_uid) >= 5:
-                short = raw_uid[:4]
-                for _ in range(3):
-                    if rdr.select_tag(short) == rdr.OK:
-                        return True, short
-                    try:
-                        time.sleep(0.02)
-                    except Exception:
-                        pass
-            return False, raw_uid
-
-        sel_ok, used_uid = _select_with_fallback_local(raw_uid)
+        sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
@@ -249,7 +242,7 @@ def write_block(rdr, uid_str, addr, data):
             if not raw_uid:
                 return {"ok": False, "error": "invalid_uid"}
 
-        sel_ok, used_uid = _select_with_fallback_local(raw_uid)
+        sel_ok, used_uid = _select_with_fallback(rdr, raw_uid)
         if not sel_ok:
             return {"ok": False, "error": "select_failed", "raw_uid": raw_uid}
         if rdr.auth(rdr.AUTHENT1A, addr, rdr.KEY, raw_uid) != rdr.OK:
