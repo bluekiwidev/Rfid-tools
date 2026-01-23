@@ -165,19 +165,39 @@
     <span id="status-detail" style="margin-left:12px;color:#ECE1E9;font-size:90%;opacity:0.8"></span>
     <span id="reader-status" style="margin-left:18px;padding:6px 10px;border-radius:6px;background:#ECE1E9;color:#2E6467;font-weight:600">idle</span>
   </div>
-  <div class="row">
-    <button id="list">List Serial Ports</button>
-    <select id="ports"></select>
-    <button id="connect">Connect</button>
-    <button id="disconnect">Disconnect</button>
-    <button id="reset_pico">Reset Pico</button>
-    <button id="clear_log">Clear Output</button>
-  </div>
 
-  <!-- Shared actions (kept minimal for simple mode) -->
-  <div class="row">
-    <button id="read_uid">Read UID</button>
-    <button id="dump">Dump Tag</button>
+  <!-- Inline control boxes -->
+  <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+    <!-- Serial Port Connection -->
+    <div style="border:2px solid #5B7785;background:white;padding:10px;border-radius:6px;flex:1;min-width:300px">
+      <h4 style="margin:0 0 8px 0;color:#2E6467;font-size:14px">Serial Port</h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button id="list" style="padding:6px 10px;font-size:13px">List</button>
+        <select id="ports" style="min-width:150px;padding:5px 8px;font-size:13px"></select>
+        <button id="connect" style="padding:6px 10px;font-size:13px">Connect</button>
+        <button id="disconnect" style="padding:6px 10px;font-size:13px">Disconnect</button>
+      </div>
+    </div>
+
+    <!-- Card UID Reader -->
+    <div style="border:2px solid #5B7785;background:white;padding:10px;border-radius:6px;flex:1;min-width:250px">
+      <h4 style="margin:0 0 8px 0;color:#2E6467;font-size:14px">Card UID</h4>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button id="read_uid" style="padding:6px 10px;font-size:13px">Read UID</button>
+        <span style="font-size:13px"><strong>UID:</strong> <span id="simple_uid">-</span></span>
+      </div>
+    </div>
+
+    <!-- General Controls -->
+    <div style="border:2px solid #5B7785;background:white;padding:10px;border-radius:6px;flex:1;min-width:250px">
+      <h4 style="margin:0 0 8px 0;color:#2E6467;font-size:14px">General</h4>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <!-- Primary dump button (also available in Advanced block editor) -->
+        <button id="dump_general" style="padding:6px 10px;font-size:13px">Dump Tag</button>
+        <button id="reset_pico" style="padding:6px 10px;font-size:13px">Reset Pico</button>
+        <button id="clear_log" style="padding:6px 10px;font-size:13px">Clear Output</button>
+      </div>
+    </div>
   </div>
 
   <!-- Advanced-only controls -->
@@ -189,6 +209,7 @@
       <button id="sidebar_toggle" title="Open settings" style="margin-left:12px; background:transparent;border:none;color:#ECE1E9;font-size:20px;cursor:pointer">☰</button>
       <button id="read_block">Read Block</button>
       <button id="write_block">Write Block</button>
+      <button id="dump" style="margin-left:8px;padding:6px 10px;font-size:13px">Dump Tag</button>
   
   
       <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
@@ -205,12 +226,10 @@
   <div id="simple_ui" style="border:2px solid #5B7785;background:white;padding:12px;margin-top:12px;border-radius:6px">
     <h3 style="color:#2E6467">Block Editor</h3>
     <div class="row">
-      <div><strong>UID:</strong> <span id="simple_uid">-</span></div>
       <div style="margin-left:18px"><strong>Block0:</strong> <span id="simple_block0">-</span></div>
     </div>
     <div class="row">
-      <button id="simple_read">Read & Dump</button>
-      <label style="margin-left:12px;margin-right:6px">Block</label>
+      <label style="margin-right:6px">Block</label>
       <select id="simple_block" style="width:120px"></select>
       <button id="simple_read_block">Read Block</button>
       <input id="simple_text" placeholder="text to write (will be utf-8) or comma bytes" style="width:300px" />
@@ -224,8 +243,11 @@
     </div>
   </div>
 
-  <h3>Serial Output</h3>
-  <textarea id="log" readonly></textarea>
+  <!-- Serial Output -->
+  <div style="border:2px solid #5B7785;background:white;padding:12px;margin-top:12px;border-radius:6px">
+    <h3 style="margin-top:0;color:#2E6467">Serial Output</h3>
+    <textarea id="log" readonly></textarea>
+  </div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="client.js"></script>

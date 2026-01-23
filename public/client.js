@@ -4,6 +4,10 @@ if (typeof io !== 'undefined') {
 }
 const pending = {};
 
+// In-memory cache of the latest dump (used to update dump table when single blocks are read)
+let currentDump = null;
+let currentDumpUid = null;
+
 // Fetch and update version info from GitHub API
 async function updateVersionInfo() {
   const versionEl = document.getElementById('version-commit');
@@ -232,7 +236,8 @@ function setReaderState(state) {
   el.style.color = color;
 }
 
-$('list').addEventListener('click', () => {
+const listBtnEl = $('list');
+if (listBtnEl) listBtnEl.addEventListener('click', () => {
   if (!socket) { alert('No server connection: switch to Server Proxy or use Web Serial'); return; }
   if (!socket.connected) {
     socket.connect();
@@ -261,7 +266,8 @@ if (socket) socket.on('ports', (ports) => {
   });
 });
 
-$('connect').addEventListener('click', async () => {
+const connectBtnEl = $('connect');
+if (connectBtnEl) connectBtnEl.addEventListener('click', async () => {
   const mode = getConnMode();
   console.log('connect clicked, mode=', mode);
   if (mode === 'webserial') {
@@ -289,7 +295,8 @@ $('connect').addEventListener('click', async () => {
   }
 });
 
-$('disconnect').addEventListener('click', async () => {
+const disconnectBtnEl = $('disconnect');
+if (disconnectBtnEl) disconnectBtnEl.addEventListener('click', async () => {
   const mode = getConnMode();
   if (mode === 'webserial') {
     await webserialDisconnect();
@@ -303,7 +310,8 @@ $('disconnect').addEventListener('click', async () => {
 });
 
 // Reset Pico (UI clear + request server to toggle DTR)
-$('reset_pico').addEventListener('click', async () => {
+const resetBtnEl = $('reset_pico');
+if (resetBtnEl) resetBtnEl.addEventListener('click', async () => {
   // clear UI state
   $('log').value = '';
   $('simple_uid').textContent = '-';
@@ -333,7 +341,7 @@ $('reset_pico').addEventListener('click', async () => {
   if (socket) socket.emit('reset_pico');
 });
 
-$('clear_log').addEventListener('click', () => { $('log').value = ''; });
+const clearLogEl = $('clear_log'); if (clearLogEl) clearLogEl.addEventListener('click', () => { const lg=$('log'); if (lg) lg.value = ''; });
 
 // Mode handling (use sidebar controls as fallback)
 const modeSelect = $('mode') || $('sb_mode');
@@ -448,13 +456,13 @@ function logAndMirror(t) { origLog(t); if (serialOnlyLog) { serialOnlyLog.value 
 window.log = logAndMirror;
 
 // Simple mode controls
-$('simple_read').addEventListener('click', () => {
+const simpleReadEl = $('simple_read'); if (simpleReadEl) simpleReadEl.addEventListener('click', () => {
   // trigger dump and let the firmware auto-wait for tag
   sendCmd({ cmd: 'dump', uid: null, protocol: getProtocol(), key: getKey() });
 });
 
-$('simple_write').addEventListener('click', async () => {
-  const start = parseInt($('simple_block').value || '8', 10);
+const simpleWriteEl = $('simple_write'); if (simpleWriteEl) simpleWriteEl.addEventListener('click', async () => {
+  const start = parseInt(($('simple_block') && $('simple_block').value) || '8', 10);
   const text = $('simple_text').value || '';
   const encoder = new TextEncoder();
   const bytes = Array.from(encoder.encode(text));
@@ -506,16 +514,16 @@ $('simple_write').addEventListener('click', async () => {
 });
 
 // Simple read-block button
-$('simple_read_block').addEventListener('click', () => {
-  const blk = parseInt($('simple_block').value || '8', 10);
+const simpleReadBlockEl = $('simple_read_block'); if (simpleReadBlockEl) simpleReadBlockEl.addEventListener('click', () => {
+  const blk = parseInt(($('simple_block') && $('simple_block').value) || '8', 10);
   // ask firmware to wait for tag and read block
   sendCmd({ cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol(), key: getKey() });
   $('simple_read_result').textContent = 'waiting...';
 });
 
 // Erase block: write 16 zero bytes
-$('simple_erase').addEventListener('click', () => {
-  const blk = parseInt($('simple_block').value || '8', 10);
+const simpleEraseEl = $('simple_erase'); if (simpleEraseEl) simpleEraseEl.addEventListener('click', () => {
+  const blk = parseInt(($('simple_block') && $('simple_block').value) || '8', 10);
   if (!confirm('Erase block ' + blk + '? This will write 16 zero bytes.')) return;
   const zeros = new Array(16).fill(0);
   sendCmd({ cmd: 'write_block', uid: null, addr: blk, data: zeros, protocol: getProtocol(), key: getKey() });
@@ -614,6 +622,8 @@ function handleSerialData(d) {
 
   // Render dump in simple UI
   if (d && d.cmd === 'dump') {
+    // cache the dump so individual block reads can update the table
+    try { currentDump = d.dump || {}; currentDumpUid = d.uid || null; } catch (e) { currentDump = d.dump || {}; currentDumpUid = d.uid || null; }
     renderDump(d.uid, d.dump);
   }
   // Handle read_block response for simple UI
@@ -623,6 +633,13 @@ function handleSerialData(d) {
     if (!ok) {
       const err = d.error || d.message || 'unknown';
       $('simple_read_result').textContent = 'ERROR: ' + err;
+      try {
+        if (currentDump && typeof addr !== 'undefined') {
+          // Mark as no access
+          currentDump[addr] = null;
+          renderDump(currentDumpUid, currentDump);
+        }
+      } catch (e) {}
       return;
     }
     const data = d.data;
@@ -650,6 +667,13 @@ function handleSerialData(d) {
     } else {
       $('simple_read_result').textContent = JSON.stringify(data);
     }
+    // If we have an in-memory dump cached, update the specific block and refresh the table
+    try {
+      if (currentDump && typeof addr !== 'undefined' && Array.isArray(data)) {
+        currentDump[addr] = data.slice();
+        renderDump(currentDumpUid, currentDump);
+      }
+    } catch (e) {}
   }
 }
 if (socket) socket.on('serial_data', handleSerialData);
@@ -666,41 +690,23 @@ if (socket) socket.on('serial_raw', (r) => {
   } catch (e) {}
 });
 
-$('read_uid').addEventListener('click', () => {
-  sendCmd({ cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
-});
+const readUidEl = $('read_uid'); if (readUidEl) readUidEl.addEventListener('click', () => { sendCmd({ cmd: 'read_uid', protocol: getProtocol(), key: getKey() }); });
 
-$('dump').addEventListener('click', () => {
+function performDump() {
   sendCmd({ cmd: 'read_uid', protocol: getProtocol(), key: getKey() });
-  // after UID read, user can press dump with the UID from output; simple UI for demo
   const uid = prompt('Enter UID (0x...) from read_uid output (or leave blank to auto)');
   sendCmd({ cmd: 'dump', uid: uid || null, protocol: getProtocol(), key: getKey() });
-});
+}
+const dumpEl = $('dump'); if (dumpEl) dumpEl.addEventListener('click', performDump);
+const dumpGen = $('dump_general'); if (dumpGen) dumpGen.addEventListener('click', performDump);
 
-$('read_block').addEventListener('click', () => {
-  const addr = $('addr').value || '8';
-  const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  sendCmd({ cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol(), key: getKey() });
-});
+const readBlockEl = $('read_block'); if (readBlockEl) readBlockEl.addEventListener('click', () => { const addr = ($('addr') && $('addr').value) || '8'; const uid = prompt('Enter UID (0x...) or leave blank to auto'); sendCmd({ cmd: 'read_block', uid: uid || null, addr: parseInt(addr,10), protocol: getProtocol(), key: getKey() }); });
 
-$('write_block').addEventListener('click', () => {
-  const addr = $('addr').value || '8';
-  const raw = $('write_data').value || '';
-  const arr = raw.split(',').map(s => parseInt(s.trim(),10)||0);
-  const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  sendCmd({ cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol(), key: getKey() });
-});
+const writeBlockEl = $('write_block'); if (writeBlockEl) writeBlockEl.addEventListener('click', () => { const addr = ($('addr') && $('addr').value) || '8'; const raw = ($('write_data') && $('write_data').value) || ''; const arr = raw.split(',').map(s => parseInt(s.trim(),10)||0); const uid = prompt('Enter UID (0x...) or leave blank to auto'); sendCmd({ cmd: 'write_block', uid: uid || null, addr: parseInt(addr,10), data: arr, protocol: getProtocol(), key: getKey() }); });
 
-$('format_ndef').addEventListener('click', () => {
-  const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  sendCmd({ cmd: 'format_ndef', uid: uid || null, protocol: getProtocol(), key: getKey() });
-});
+const formatNdefEl = $('format_ndef'); if (formatNdefEl) formatNdefEl.addEventListener('click', () => { const uid = prompt('Enter UID (0x...) or leave blank to auto'); sendCmd({ cmd: 'format_ndef', uid: uid || null, protocol: getProtocol(), key: getKey() }); });
 
-$('write_ndef').addEventListener('click', () => {
-  const text = $('ndef_text').value || 'Hello';
-  const uid = prompt('Enter UID (0x...) or leave blank to auto');
-  sendCmd({ cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol(), key: getKey() });
-});
+const writeNdefEl = $('write_ndef'); if (writeNdefEl) writeNdefEl.addEventListener('click', () => { const text = ($('ndef_text') && $('ndef_text').value) || 'Hello'; const uid = prompt('Enter UID (0x...) or leave blank to auto'); sendCmd({ cmd: 'write_ndef', uid: uid || null, text, protocol: getProtocol(), key: getKey() }); });
 
 // auto-list ports on load (server mode only)
 if (getConnMode() !== 'webserial') {
