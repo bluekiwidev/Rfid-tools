@@ -112,6 +112,7 @@
       <select id="sb_mode" style="width:100%">
         <option value="simple">Simple</option>
         <option value="advanced">Advanced</option>
+        <option value="hid">HID</option>
       </select>
     </div>
     <div style="margin-bottom:10px">
@@ -135,6 +136,7 @@
     <div style="margin-top:12px">
       <a id="github_link" href="https://github.com/bluekiwidev/Rfid-tools" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#24292e;color:#fff;padding:8px 12px;border-radius:4px;text-decoration:none">View on GitHub</a>
     </div>
+    <!-- HID controls moved to dedicated HID page -->
   </div>
 
   <!-- Serial output full-page view (hidden) - moved here so it's available outside advanced UI -->
@@ -243,6 +245,33 @@
     <div class="row">
       <h4>Dump</h4>
       <div id="dump_table_wrap" style="max-height:300px;overflow:auto;border:2px solid #5B7785;padding:8px;background:#ECE1E9;border-radius:4px"></div>
+    </div>
+  </div>
+
+  <!-- HID Page (full controls for HID mapping) -->
+  <div id="hid_page" style="border:2px solid #5B7785;background:white;padding:12px;margin-top:12px;border-radius:6px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h3 style="margin:0;color:#2E6467">HID Mode</h3>
+      <div>
+        <button id="hid_back" style="background:#5B7785;color:#ECE1E9;border:none;padding:6px 8px;border-radius:4px;cursor:pointer">Back</button>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="hid_enabled" /> Enable HID (keyboard)</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="hid_enter" /> Append Enter after typing</label>
+    </div>
+    <div style="margin-bottom:12px">
+      <label class="small" style="display:block;margin-bottom:6px;color:#2E6467;font-weight:600">Mappings</label>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input id="hid_uid_input" placeholder="UID (0x...)" style="flex:1" />
+        <input id="hid_text_input" placeholder="Text to type" style="flex:2" />
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button id="hid_add_btn">Add / Save</button>
+        <button id="hid_refresh_btn">Refresh</button>
+        <button id="hid_cancel_btn" style="display:none;background:#a33">Cancel</button>
+      </div>
+      <div id="hid_map_list" style="max-height:360px;overflow:auto;border:1px solid #eee;padding:8px;background:#f9f9f9;border-radius:4px"></div>
     </div>
   </div>
 

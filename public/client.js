@@ -349,8 +349,10 @@ function updateMode() {
   const m = (modeSelect && modeSelect.value) ? modeSelect.value : 'simple';
   const simple = $('simple_ui');
   const adv = $('advanced_ui');
+  const hidPage = $('hid_page');
   if (simple) simple.style.display = m === 'simple' ? 'block' : 'none';
   if (adv) adv.style.display = m === 'advanced' ? 'block' : 'none';
+  if (hidPage) hidPage.style.display = m === 'hid' ? 'block' : 'none';
 }
 if (modeSelect) modeSelect.addEventListener('change', updateMode);
 updateMode();
@@ -438,6 +440,118 @@ if (sb_key) { sb_key.value = getKey() || ''; sb_key.addEventListener('input',(e)
 if (sb_verbose) { sb_verbose.checked = isVerbose(); sb_verbose.addEventListener('change',(e)=>{ const p = $('verbose'); if (p) p.checked = e.target.checked; }); }
 
 updateConnectionUI();
+
+// HID UI wiring -----------------------------------------------------------
+async function fetchHidSettings() {
+  try {
+    const r = await sendCmdAwait({ cmd: 'hid_get_settings' }, 4000);
+    if (r) {
+      const en = !!r.enabled; const ent = !!r.enter;
+      const enEl = $('hid_enabled'); const entEl = $('hid_enter');
+      if (enEl) enEl.checked = en;
+      if (entEl) entEl.checked = ent;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function refreshHidList() {
+  try {
+    const r = await sendCmdAwait({ cmd: 'hid_list' }, 4000);
+    const wrap = $('hid_map_list');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (!r || !r.maps) { wrap.textContent = 'No mappings'; return; }
+    const maps = r.maps;
+    const keys = Object.keys(maps).sort();
+    if (keys.length === 0) { wrap.textContent = 'No mappings'; return; }
+    keys.forEach(uid => {
+      const row = document.createElement('div');
+      row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.alignItems = 'center'; row.style.padding = '6px 4px';
+      const left = document.createElement('div'); left.style.flex = '1'; left.textContent = uid + ' → ' + maps[uid];
+      // Edit button
+      const edit = document.createElement('button'); edit.textContent = 'Edit'; edit.style.marginLeft = '8px';
+      edit.addEventListener('click', () => {
+        // populate inputs and switch to edit mode
+        const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input'); const addBtn = $('hid_add_btn'); const cancelBtn = $('hid_cancel_btn');
+        if (uidInput) uidInput.value = uid;
+        if (txtInput) txtInput.value = maps[uid];
+        // store editing state
+        window._hidEditingUid = uid;
+        if (addBtn) addBtn.textContent = 'Update';
+        if (cancelBtn) cancelBtn.style.display = '';
+      });
+      const del = document.createElement('button'); del.textContent = 'Delete'; del.style.marginLeft = '8px';
+      del.addEventListener('click', async () => { if (!confirm('Delete mapping for ' + uid + '?')) return; try { const rr = await sendCmdAwait({ cmd: 'hid_delete', uid }); if (rr && rr.ok) { refreshHidList(); } else { alert('Delete failed'); } } catch (e) { alert('Delete failed: ' + e); } });
+      const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '6px'; actions.appendChild(edit); actions.appendChild(del);
+      row.appendChild(left); row.appendChild(actions); wrap.appendChild(row);
+    });
+  } catch (e) {
+    const wrap = $('hid_map_list'); if (wrap) wrap.textContent = 'Failed to load mappings';
+  }
+}
+
+// Add or update mapping
+const hidAddBtn = $('hid_add_btn'); if (hidAddBtn) hidAddBtn.addEventListener('click', async () => {
+  const uidIn = $('hid_uid_input'); const txtIn = $('hid_text_input');
+  const uid = (uidIn && uidIn.value) || ''; const text = (txtIn && txtIn.value) || '';
+  if (!uid || !text) return alert('Provide both UID and text');
+  try {
+    // if editing existing mapping
+    const editing = window._hidEditingUid || null;
+    const r = await sendCmdAwait({ cmd: 'hid_set', uid, text }, 4000);
+    if (!(r && r.ok)) { return alert('Save failed'); }
+    // if UID changed, delete old entry
+    if (editing && editing !== uid) {
+      try { await sendCmdAwait({ cmd: 'hid_delete', uid: editing }, 3000); } catch (e) { /* ignore */ }
+    }
+    // reset edit state
+    window._hidEditingUid = null;
+    if (hidAddBtn) hidAddBtn.textContent = 'Add / Save';
+    const cancelBtn = $('hid_cancel_btn'); if (cancelBtn) cancelBtn.style.display = 'none';
+    refreshHidList();
+    try { if (uidIn) uidIn.value = ''; if (txtIn) txtIn.value = ''; } catch (e) {}
+  } catch (e) { alert('Save failed: ' + e); }
+});
+
+// Refresh button
+const hidRefreshBtn = $('hid_refresh_btn'); if (hidRefreshBtn) hidRefreshBtn.addEventListener('click', refreshHidList);
+
+// Enable toggle
+const hidEnabledEl = $('hid_enabled'); if (hidEnabledEl) hidEnabledEl.addEventListener('change', async (e) => {
+  try {
+    const enabled = !!e.target.checked;
+    const r = await sendCmdAwait({ cmd: 'hid_set_enabled', enabled }, 3000);
+    if (!(r && r.ok)) { alert('Failed to set enabled'); }
+  } catch (err) { alert('Failed to set enabled: ' + err); }
+});
+
+// Enter toggle
+const hidEnterEl = $('hid_enter'); if (hidEnterEl) hidEnterEl.addEventListener('change', async (e) => {
+  try {
+    const enter = !!e.target.checked;
+    const r = await sendCmdAwait({ cmd: 'hid_set_enter', enter }, 3000);
+    if (!(r && r.ok)) { alert('Failed to set enter'); }
+  } catch (err) { alert('Failed to set enter: ' + err); }
+});
+
+// initialize HID UI state
+setTimeout(() => { fetchHidSettings(); refreshHidList(); }, 600);
+
+// Cancel edit
+const hidCancelBtn = $('hid_cancel_btn'); if (hidCancelBtn) hidCancelBtn.addEventListener('click', () => {
+  window._hidEditingUid = null;
+  const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input');
+  if (uidInput) uidInput.value = '';
+  if (txtInput) txtInput.value = '';
+  const addBtn = $('hid_add_btn'); if (addBtn) addBtn.textContent = 'Add / Save';
+  hidCancelBtn.style.display = 'none';
+});
+
+// Back button from HID page
+const hidBackBtn = $('hid_back'); if (hidBackBtn) hidBackBtn.addEventListener('click', () => {
+  if (modeSelect) { modeSelect.value = 'simple'; updateMode(); }
+});
+
 
 // Serial output full-page handlers
 const openSerialPage = $('open_serial_page');
