@@ -199,16 +199,33 @@ $('disconnect').addEventListener('click', async () => {
 });
 
 // Reset Pico (UI clear + request server to toggle DTR)
-$('reset_pico').addEventListener('click', () => {
+$('reset_pico').addEventListener('click', async () => {
   // clear UI state
   $('log').value = '';
   $('simple_uid').textContent = '-';
   $('simple_block0').textContent = '-';
   $('simple_read_result').textContent = '-';
   $('dump_table_wrap').innerHTML = '';
+  // reset mode and reader indicators
   modeSelect.value = 'simple'; updateMode();
   setReaderState('idle');
-  // ask server to reset the attached Pico
+  setStatus('disconnected', 'reset');
+  // clear ports list
+  try { const p = $('ports'); if (p) p.innerHTML = ''; } catch (e) {}
+  // cancel and reject any pending txn promises
+  try {
+    for (const t of Object.keys(pending)) {
+      try { clearTimeout(pending[t].to); pending[t].reject(new Error('reset')); } catch (e) {}
+      try { delete pending[t]; } catch (e) {}
+    }
+  } catch (e) {}
+
+  // close Web Serial if open
+  try {
+    if (webserialPort) await webserialDisconnect();
+  } catch (e) {}
+
+  // ask server to reset the attached Pico (if server connected)
   if (socket) socket.emit('reset_pico');
 });
 
