@@ -118,6 +118,17 @@ async function webserialStartReader() {
   } finally {
     try { if (webserialReader) { webserialReader.releaseLock(); webserialReader = null; } } catch (e) {}
   }
+  // Auto-refresh HID UI when HID-related messages arrive
+  try {
+    if (d && d.cmd && typeof d.cmd === 'string' && d.cmd.indexOf('hid_') === 0) {
+      if (d.cmd === 'hid_list' && d.maps) {
+        renderHidMapUI(d.maps);
+      } else if (d.cmd === 'hid_set' || d.cmd === 'hid_delete' || d.cmd === 'hid_set_enabled' || d.cmd === 'hid_set_enter') {
+        // refresh to reflect current state (server may have updated storage)
+        setTimeout(() => { try { refreshHidList(); } catch (e) {} }, 200);
+      }
+    }
+  } catch (e) {}
 }
 
 async function webserialConnect() {
@@ -457,34 +468,8 @@ async function fetchHidSettings() {
 async function refreshHidList() {
   try {
     const r = await sendCmdAwait({ cmd: 'hid_list' }, 4000);
-    const wrap = $('hid_map_list');
-    if (!wrap) return;
-    wrap.innerHTML = '';
-    if (!r || !r.maps) { wrap.textContent = 'No mappings'; return; }
-    const maps = r.maps;
-    const keys = Object.keys(maps).sort();
-    if (keys.length === 0) { wrap.textContent = 'No mappings'; return; }
-    keys.forEach(uid => {
-      const row = document.createElement('div');
-      row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.alignItems = 'center'; row.style.padding = '6px 4px';
-      const left = document.createElement('div'); left.style.flex = '1'; left.textContent = uid + ' → ' + maps[uid];
-      // Edit button
-      const edit = document.createElement('button'); edit.textContent = 'Edit'; edit.style.marginLeft = '8px';
-      edit.addEventListener('click', () => {
-        // populate inputs and switch to edit mode
-        const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input'); const addBtn = $('hid_add_btn'); const cancelBtn = $('hid_cancel_btn');
-        if (uidInput) uidInput.value = uid;
-        if (txtInput) txtInput.value = maps[uid];
-        // store editing state
-        window._hidEditingUid = uid;
-        if (addBtn) addBtn.textContent = 'Update';
-        if (cancelBtn) cancelBtn.style.display = '';
-      });
-      const del = document.createElement('button'); del.textContent = 'Delete'; del.style.marginLeft = '8px';
-      del.addEventListener('click', async () => { if (!confirm('Delete mapping for ' + uid + '?')) return; try { const rr = await sendCmdAwait({ cmd: 'hid_delete', uid }); if (rr && rr.ok) { refreshHidList(); } else { alert('Delete failed'); } } catch (e) { alert('Delete failed: ' + e); } });
-      const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '6px'; actions.appendChild(edit); actions.appendChild(del);
-      row.appendChild(left); row.appendChild(actions); wrap.appendChild(row);
-    });
+    const maps = (r && r.maps) ? r.maps : {};
+    renderHidMapUI(maps);
   } catch (e) {
     const wrap = $('hid_map_list'); if (wrap) wrap.textContent = 'Failed to load mappings';
   }
@@ -629,7 +614,7 @@ const simpleWriteEl = $('simple_write'); if (simpleWriteEl) simpleWriteEl.addEve
 
 // Simple read-block button
 const simpleReadBlockEl = $('simple_read_block'); if (simpleReadBlockEl) simpleReadBlockEl.addEventListener('click', () => {
-  const blk = parseInt(($('simple_block') && $('simple_block').value) || '8', 10);
+      renderHidMapUI(maps);
   // ask firmware to wait for tag and read block
   sendCmd({ cmd: 'read_block', uid: null, addr: blk, protocol: getProtocol(), key: getKey() });
   $('simple_read_result').textContent = 'waiting...';
@@ -659,6 +644,42 @@ if (socket) socket.on('serial_status', (s) => {
     setReaderState('idle');
   }
 });
+
+// Render HID map list into the mapping panel
+function renderHidMapUI(maps) {
+  const wrap = $('hid_map_list');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!maps || Object.keys(maps).length === 0) { wrap.textContent = 'No mappings'; return; }
+  const keys = Object.keys(maps).sort();
+  keys.forEach(uid => {
+    const row = document.createElement('div');
+    row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.alignItems = 'center'; row.style.padding = '6px 4px';
+    const left = document.createElement('div'); left.style.flex = '1'; left.textContent = uid + ' → ' + maps[uid];
+    // Edit button
+    const edit = document.createElement('button'); edit.textContent = 'Edit'; edit.style.marginLeft = '8px';
+    edit.addEventListener('click', () => {
+      const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input'); const addBtn = $('hid_add_btn'); const cancelBtn = $('hid_cancel_btn');
+      if (uidInput) uidInput.value = uid;
+      if (txtInput) txtInput.value = maps[uid];
+      // store editing state
+      window._hidEditingUid = uid;
+      if (addBtn) addBtn.textContent = 'Update';
+      if (cancelBtn) cancelBtn.style.display = '';
+    });
+    const del = document.createElement('button'); del.textContent = 'Delete'; del.style.marginLeft = '8px';
+    del.addEventListener('click', async () => {
+      if (!confirm('Delete mapping for ' + uid + '?')) return;
+      try {
+        const rr = await sendCmdAwait({ cmd: 'hid_delete', uid });
+        if (rr && rr.ok) { refreshHidList(); }
+        else { alert('Delete failed: ' + (rr && rr.message ? rr.message : 'unknown')); }
+      } catch (e) { alert('Delete failed: ' + e); }
+    });
+    const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '6px'; actions.appendChild(edit); actions.appendChild(del);
+    row.appendChild(left); row.appendChild(actions); wrap.appendChild(row);
+  });
+}
 function handleSerialRaw(r) {
   try {
     log('RAW: ' + r);
