@@ -501,6 +501,43 @@ const hidAddBtn = $('hid_add_btn'); if (hidAddBtn) hidAddBtn.addEventListener('c
 // Refresh button
 const hidRefreshBtn = $('hid_refresh_btn'); if (hidRefreshBtn) hidRefreshBtn.addEventListener('click', refreshHidList);
 
+// Scan UID button: request the Pico to read a UID and populate the UID input
+const hidScanBtn = $('hid_scan_btn'); if (hidScanBtn) hidScanBtn.addEventListener('click', async () => {
+  try {
+    setReaderState('waiting');
+    const r = await sendCmdAwait({ cmd: 'read_uid' }, 20000);
+    if (!r) { alert('No response from device'); setReaderState('idle'); return; }
+    const uid = r.uid || null;
+    if (!uid) { alert('No UID read'); setReaderState('idle'); return; }
+    const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input'); const addBtn = $('hid_add_btn'); const cancelBtn = $('hid_cancel_btn');
+    if (uidInput) uidInput.value = uid;
+    // fetch current mappings to auto-fill text if exists
+    try {
+      const m = await sendCmdAwait({ cmd: 'hid_list' }, 4000);
+      const maps = (m && m.maps) ? m.maps : {};
+      if (maps && maps[uid]) {
+        if (txtInput) txtInput.value = maps[uid];
+        // enter edit mode
+        window._hidEditingUid = uid;
+        if (addBtn) addBtn.textContent = 'Update';
+        if (cancelBtn) cancelBtn.style.display = '';
+      } else {
+        // new mapping
+        window._hidEditingUid = null;
+        if (addBtn) addBtn.textContent = 'Add / Save';
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        if (txtInput) txtInput.value = '';
+      }
+    } catch (e) {
+      // ignore mapping fetch failure
+    }
+    setReaderState('ready');
+  } catch (e) {
+    alert('Scan failed: ' + e);
+    setReaderState('idle');
+  }
+});
+
 // Enable toggle
 const hidEnabledEl = $('hid_enabled'); if (hidEnabledEl) hidEnabledEl.addEventListener('change', async (e) => {
   try {
