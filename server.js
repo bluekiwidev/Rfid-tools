@@ -3,15 +3,35 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
+const { execSync } = require('child_process');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+function getGitCommit() {
+  try {
+    const commit = execSync('git log --format="%h" -n 1', { encoding: 'utf8' }).trim();
+    return commit || 'unknown';
+  } catch (e) {
+    console.warn('Failed to get git commit:', e.message);
+    return 'unknown';
+  }
+}
+
 app.use(express.static('public'));
+
+// API endpoint to get current commit
+app.get('/api/version', (req, res) => {
+  res.json({ commit: getGitCommit() });
+});
 
 io.on('connection', (socket) => {
   console.log('client connected');
+  
+  // Send version info immediately on connection
+  socket.emit('version_info', { commit: getGitCommit() });
+  
   let port = null;
   let parser = null;
 

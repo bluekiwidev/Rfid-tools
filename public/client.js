@@ -4,6 +4,37 @@ if (typeof io !== 'undefined') {
 }
 const pending = {};
 
+// Fetch and update version info
+async function updateVersionInfo() {
+  try {
+    const response = await fetch('/api/version');
+    const data = await response.json();
+    const versionEl = document.getElementById('version-commit');
+    if (versionEl && data.commit) {
+      versionEl.textContent = `v1.0.0-${data.commit}`;
+    }
+  } catch (e) {
+    console.warn('Failed to fetch version:', e);
+  }
+}
+
+// Update version on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', updateVersionInfo);
+} else {
+  updateVersionInfo();
+}
+
+// Listen for version info from server via socket
+if (socket) {
+  socket.on('version_info', (data) => {
+    const versionEl = document.getElementById('version-commit');
+    if (versionEl && data.commit) {
+      versionEl.textContent = `v1.0.0-${data.commit}`;
+    }
+  });
+}
+
 // Web Serial state
 let webserialPort = null;
 let webserialWriter = null;
