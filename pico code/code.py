@@ -241,47 +241,47 @@ if __name__ == "__main__":
                         send_response({"cmd": "write_ndef", "ok": ok})
 
                 else:
-                    send_response({"error": "unknown_cmd", "cmd": action})
+                    # HID management commands
+                    if action == 'hid_list':
+                        send_response({"cmd": "hid_list", "maps": hid_maps})
 
-                # HID management commands
-                if action == 'hid_list':
-                    send_response({"cmd": "hid_list", "maps": hid_maps})
+                    elif action == 'hid_set':
+                        uid = cmd.get('uid')
+                        text = cmd.get('text', '')
+                        if not uid:
+                            send_response({"cmd": "hid_set", "ok": False, "error": "missing_uid"})
+                        else:
+                            hid_maps[uid] = text
+                            ok = save_json_file(HID_MAPS_FILE, hid_maps)
+                            send_response({"cmd": "hid_set", "ok": ok, "uid": uid, "text": text})
 
-                elif action == 'hid_set':
-                    uid = cmd.get('uid')
-                    text = cmd.get('text', '')
-                    if not uid:
-                        send_response({"cmd": "hid_set", "ok": False, "error": "missing_uid"})
+                    elif action == 'hid_delete':
+                        uid = cmd.get('uid')
+                        if uid and uid in hid_maps:
+                            hid_maps.pop(uid, None)
+                            ok = save_json_file(HID_MAPS_FILE, hid_maps)
+                            send_response({"cmd": "hid_delete", "ok": ok, "uid": uid})
+                        else:
+                            send_response({"cmd": "hid_delete", "ok": False, "error": "not_found", "uid": uid})
+
+                    elif action == 'hid_set_enabled':
+                        enabled = bool(cmd.get('enabled', False))
+                        hid_enabled = enabled
+                        hid_settings['enabled'] = hid_enabled
+                        ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                        send_response({"cmd": "hid_set_enabled", "ok": ok, "enabled": hid_enabled})
+
+                    elif action == 'hid_set_enter':
+                        enter = bool(cmd.get('enter', False))
+                        hid_enter = enter
+                        hid_settings['enter'] = hid_enter
+                        ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                        send_response({"cmd": "hid_set_enter", "ok": ok, "enter": hid_enter})
+
+                    elif action == 'hid_get_settings':
+                        send_response({"cmd": "hid_get_settings", "enabled": hid_enabled, "enter": hid_enter})
                     else:
-                        hid_maps[uid] = text
-                        ok = save_json_file(HID_MAPS_FILE, hid_maps)
-                        send_response({"cmd": "hid_set", "ok": ok, "uid": uid, "text": text})
-
-                elif action == 'hid_delete':
-                    uid = cmd.get('uid')
-                    if uid and uid in hid_maps:
-                        hid_maps.pop(uid, None)
-                        ok = save_json_file(HID_MAPS_FILE, hid_maps)
-                        send_response({"cmd": "hid_delete", "ok": ok, "uid": uid})
-                    else:
-                        send_response({"cmd": "hid_delete", "ok": False, "error": "not_found", "uid": uid})
-
-                elif action == 'hid_set_enabled':
-                    enabled = bool(cmd.get('enabled', False))
-                    hid_enabled = enabled
-                    hid_settings['enabled'] = hid_enabled
-                    ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
-                    send_response({"cmd": "hid_set_enabled", "ok": ok, "enabled": hid_enabled})
-
-                elif action == 'hid_set_enter':
-                    enter = bool(cmd.get('enter', False))
-                    hid_enter = enter
-                    hid_settings['enter'] = hid_enter
-                    ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
-                    send_response({"cmd": "hid_set_enter", "ok": ok, "enter": hid_enter})
-
-                elif action == 'hid_get_settings':
-                    send_response({"cmd": "hid_get_settings", "enabled": hid_enabled, "enter": hid_enter})
+                        send_response({"error": "unknown_cmd", "cmd": action})
 
         except Exception as e:
             try:
