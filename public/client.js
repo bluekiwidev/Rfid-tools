@@ -253,10 +253,37 @@ const sidebarToggle = $('sidebar_toggle');
 const headerSidebarToggle = $('header_sidebar_toggle');
 const sidebarClose = $('sidebar_close');
 if (sidebarToggle) sidebarToggle.addEventListener('click', () => {
-  if (sidebar) sidebar.style.right = '0';
+  if (!sidebar) return;
+  sidebar.style.transform = 'translateX(0)';
+  sidebar.setAttribute('aria-hidden', 'false');
+  try { headerSidebarToggle.setAttribute('aria-expanded', 'true'); } catch (e) {}
 });
-if (sidebarClose) sidebarClose.addEventListener('click', () => { if (sidebar) sidebar.style.right = '-320px'; });
-if (headerSidebarToggle) headerSidebarToggle.addEventListener('click', () => { if (sidebar) sidebar.style.right = '0'; });
+if (sidebarClose) sidebarClose.addEventListener('click', () => { if (!sidebar) return; sidebar.style.transform = 'translateX(100%)'; sidebar.setAttribute('aria-hidden','true'); try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {} });
+if (headerSidebarToggle) headerSidebarToggle.addEventListener('click', () => {
+  try {
+    if (!sidebar) return;
+    const isOpen = sidebar.getAttribute('aria-hidden') === 'false';
+    console.log('header toggle clicked, sidebar aria-hidden=', sidebar.getAttribute('aria-hidden'), 'isOpen=', isOpen);
+    if (isOpen) {
+      sidebar.style.transform = 'translateX(100%)';
+      sidebar.setAttribute('aria-hidden','true');
+      try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {}
+    } else {
+      sidebar.style.transform = 'translateX(0)';
+      sidebar.setAttribute('aria-hidden','false');
+      try { headerSidebarToggle.setAttribute('aria-expanded', 'true'); } catch (e) {}
+    }
+  } catch (e) { console.warn('sidebar toggle failed', e); }
+});
+
+// Close sidebar with Escape key
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && sidebar && sidebar.getAttribute('aria-hidden') === 'false') {
+    sidebar.style.transform = 'translateX(100%)';
+    sidebar.setAttribute('aria-hidden','true');
+    try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {}
+  }
+});
 
 // Sync sidebar controls with main controls
 function updateConnectionUI() {
@@ -297,7 +324,7 @@ const serialPage = $('serial_page');
 const serialBack = $('serial_back');
 const serialClear = $('serial_clear');
 const serialOnlyLog = $('serial_only_log');
-if (openSerialPage) openSerialPage.addEventListener('click', () => { if (serialPage) serialPage.style.display = 'block'; serialOnlyLog.value = $('log').value; if (sidebar) sidebar.style.right = '-320px'; });
+if (openSerialPage) openSerialPage.addEventListener('click', () => { if (serialPage) serialPage.style.display = 'block'; serialOnlyLog.value = $('log').value; if (sidebar) { sidebar.style.transform = 'translateX(100%)'; sidebar.setAttribute('aria-hidden','true'); } });
 if (serialBack) serialBack.addEventListener('click', () => { if (serialPage) serialPage.style.display = 'none'; });
 if (serialClear) serialClear.addEventListener('click', () => { if (serialOnlyLog) serialOnlyLog.value = ''; if ($('log')) $('log').value = ''; });
 
