@@ -73,7 +73,7 @@ function sendCmdAwait(cmd, timeout=12000) {
     }, timeout);
     pending[txn] = { resolve, reject, to };
     // send via selected transport
-    const mode = (document.getElementById('conn_mode') || {}).value || 'server';
+    const mode = getConnMode();
     if (mode === 'webserial' && webserialPort && webserialWriter) {
       try {
         webserialSendLine(JSON.stringify(cmd)).catch(err => {
@@ -99,6 +99,8 @@ function isVerbose() { const v = $('verbose') || $('sb_verbose'); return !!v && 
 
 function getProtocol() { const p = $('protocol') || $('sb_protocol'); return p ? p.value : 'auto'; }
 function getKey() { const k = $('key') || $('sb_key'); return k ? (k.value ? k.value.trim() : null) : null; }
+
+function getConnMode() { const c = $('conn_mode') || $('sb_conn_mode'); return c ? c.value : 'server'; }
 
 function setStatus(state, detail) {
   const dot = $('status-dot');
@@ -141,12 +143,17 @@ function setReaderState(state) {
 }
 
 $('list').addEventListener('click', () => {
-  if (socket) socket.emit('list_ports');
-  else alert('No server connection: switch to Server Proxy or use Web Serial');
+  if (!socket) { alert('No server connection: switch to Server Proxy or use Web Serial'); return; }
+  if (!socket.connected) {
+    socket.connect();
+    socket.once('connect', () => { socket.emit('list_ports'); });
+  } else {
+    socket.emit('list_ports');
+  }
 });
 
 function sendCmd(cmd) {
-  const mode = (document.getElementById('conn_mode') || {}).value || 'server';
+  const mode = getConnMode();
   if (mode === 'webserial' && webserialPort && webserialWriter) {
     try { webserialSendLine(JSON.stringify(cmd)); } catch (e) { log('WebSerial send error: ' + e); }
   } else {
@@ -165,7 +172,8 @@ if (socket) socket.on('ports', (ports) => {
 });
 
 $('connect').addEventListener('click', async () => {
-  const mode = ($('conn_mode') || {}).value || 'server';
+  const mode = getConnMode();
+  console.log('connect clicked, mode=', mode);
   if (mode === 'webserial') {
     try {
       setStatus('connecting', 'webserial');
@@ -182,20 +190,26 @@ $('connect').addEventListener('click', async () => {
   const p = $('ports').value;
   if (!p) { alert('select port'); return }
   setStatus('connecting', p);
-  if (socket) socket.emit('connect_serial', { path: p });
-  else alert('No server connection');
+  if (!socket) { alert('No server connection'); return; }
+  if (!socket.connected) {
+    socket.connect();
+    socket.once('connect', () => { socket.emit('connect_serial', { path: p }); });
+  } else {
+    socket.emit('connect_serial', { path: p });
+  }
 });
 
 $('disconnect').addEventListener('click', async () => {
-  const mode = ($('conn_mode') || {}).value || 'server';
+  const mode = getConnMode();
   if (mode === 'webserial') {
     await webserialDisconnect();
     setStatus('disconnected', 'webserial');
     setReaderState('idle');
     return;
   }
-  if (socket) socket.emit('disconnect_serial');
-  else alert('No server connection');
+  if (!socket) { alert('No server connection'); return; }
+  if (!socket.connected) { socket.connect(); socket.once('connect', () => { socket.emit('disconnect_serial'); }); }
+  else socket.emit('disconnect_serial');
 });
 
 // Reset Pico (UI clear + request server to toggle DTR)
@@ -287,7 +301,7 @@ document.addEventListener('keydown', (ev) => {
 
 // Sync sidebar controls with main controls
 function updateConnectionUI() {
-  const mode = (document.getElementById('conn_mode') || {}).value || 'server';
+  const mode = getConnMode();
   const listBtn = $('list');
   const portsSel = $('ports');
   if (mode === 'webserial') {
@@ -583,8 +597,11 @@ $('write_ndef').addEventListener('click', () => {
 });
 
 // auto-list ports on load (server mode only)
-if ((document.getElementById('conn_mode') || {}).value !== 'webserial') {
-  if (socket) socket.emit('list_ports');
+if (getConnMode() !== 'webserial') {
+  if (socket) {
+    if (!socket.connected) { socket.connect(); socket.once('connect', ()=> socket.emit('list_ports')); }
+    else socket.emit('list_ports');
+  }
 }
 
 if (socket) socket.on('connect', () => setStatus('connected', 'socket'));

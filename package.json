@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "Web control panel to talk to a CircuitPython Pico MFRC522 over USB serial",
   "main": "server.js",
-  "start": {
+  "scripts": {
     "start": "node server.js",
+    "dev": "node server.js",
     "deploy": "gh-pages -d public"
   },
   "dependencies": {
