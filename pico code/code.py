@@ -12,10 +12,12 @@ from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS    # type: ignore
 
 import json
 import usb_cdc                                               # type: ignore
+import os
 
 from utils.mfrc522 import MFRC522
 from utils.mfrc522_utils import read_rfid, dump_tag, read_block, write_block, write_ndef, format_ndef
 from utils.json_utils import get_tags_dict
+from adafruit_hid.keycode import Keycode                      # type: ignore
 
 
 # SPI Pins for MFRC522
@@ -43,6 +45,32 @@ if __name__ == "__main__":
 
     # get RFID Tag IDs
     known_tags = get_tags_dict('known_tags.json')
+
+    # HID mapping persistence
+    HID_MAPS_FILE = 'hid_maps.json'
+    HID_SETTINGS_FILE = 'hid_settings.json'
+
+    def load_json_file(path, default):
+        try:
+            if not os.path.exists(path):
+                return default
+            with open(path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return default
+
+    def save_json_file(path, obj):
+        try:
+            with open(path, 'w') as f:
+                json.dump(obj, f)
+                return True
+        except Exception:
+            return False
+
+    hid_maps = load_json_file(HID_MAPS_FILE, {})
+    hid_settings = load_json_file(HID_SETTINGS_FILE, {"enabled": False, "enter": False})
+    hid_enabled = bool(hid_settings.get('enabled', False))
+    hid_enter = bool(hid_settings.get('enter', False))
 
     
     # SERIAL COMMAND LOOP
@@ -93,6 +121,9 @@ if __name__ == "__main__":
 
     print("ready")
     current_txn = None
+    # HID runtime state
+    hid_last_uid = None
+    hid_notfound_counter = 0
     while True:
         try:
             if usb and getattr(usb, 'in_waiting', 0):
@@ -212,9 +243,80 @@ if __name__ == "__main__":
                 else:
                     send_response({"error": "unknown_cmd", "cmd": action})
 
+                # HID management commands
+                if action == 'hid_list':
+                    send_response({"cmd": "hid_list", "maps": hid_maps})
+
+                elif action == 'hid_set':
+                    uid = cmd.get('uid')
+                    text = cmd.get('text', '')
+                    if not uid:
+                        send_response({"cmd": "hid_set", "ok": False, "error": "missing_uid"})
+                    else:
+                        hid_maps[uid] = text
+                        ok = save_json_file(HID_MAPS_FILE, hid_maps)
+                        send_response({"cmd": "hid_set", "ok": ok, "uid": uid, "text": text})
+
+                elif action == 'hid_delete':
+                    uid = cmd.get('uid')
+                    if uid and uid in hid_maps:
+                        hid_maps.pop(uid, None)
+                        ok = save_json_file(HID_MAPS_FILE, hid_maps)
+                        send_response({"cmd": "hid_delete", "ok": ok, "uid": uid})
+                    else:
+                        send_response({"cmd": "hid_delete", "ok": False, "error": "not_found", "uid": uid})
+
+                elif action == 'hid_set_enabled':
+                    enabled = bool(cmd.get('enabled', False))
+                    hid_enabled = enabled
+                    hid_settings['enabled'] = hid_enabled
+                    ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                    send_response({"cmd": "hid_set_enabled", "ok": ok, "enabled": hid_enabled})
+
+                elif action == 'hid_set_enter':
+                    enter = bool(cmd.get('enter', False))
+                    hid_enter = enter
+                    hid_settings['enter'] = hid_enter
+                    ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                    send_response({"cmd": "hid_set_enter", "ok": ok, "enter": hid_enter})
+
+                elif action == 'hid_get_settings':
+                    send_response({"cmd": "hid_get_settings", "enabled": hid_enabled, "enter": hid_enter})
+
         except Exception as e:
             try:
                 send_response({"error": "exception", "message": str(e)})
             except Exception:
                 print("exception", e)
+        # Autonomous HID scanning: if enabled, look for tags and type mapped text once per tag
+        try:
+            if hid_enabled:
+                uid, _ = read_rfid(rdr, address=8)
+                if uid and uid != 0:
+                    hid_notfound_counter = 0
+                    if uid != hid_last_uid:
+                        # new tag seen
+                        hid_last_uid = uid
+                        mapped = hid_maps.get(uid)
+                        if mapped is not None:
+                            # report and type
+                            send_response({"cmd": "status", "status": "hid_typing", "uid": uid})
+                            try:
+                                keyboard.write(mapped)
+                                if hid_enter:
+                                    kbd.press(Keycode.ENTER)
+                                    kbd.release_all()
+                                send_response({"cmd": "hid_typed", "uid": uid, "text": mapped})
+                            except Exception as e:
+                                send_response({"cmd": "hid_error", "uid": uid, "error": str(e)})
+                else:
+                    # no tag present
+                    hid_notfound_counter += 1
+                    if hid_notfound_counter >= notfound_limit:
+                        hid_last_uid = None
+                        hid_notfound_counter = 0
+        except Exception:
+            # swallow sensor/key errors so serial stays responsive
+            pass
+
         time.sleep(delay)
