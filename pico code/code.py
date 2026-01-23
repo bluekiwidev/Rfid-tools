@@ -13,6 +13,14 @@ from adafruit_hid.keyboard_layout_us import KeyboardLayoutUS    # type: ignore
 import json
 import usb_cdc                                               # type: ignore
 import os
+try:
+    import storage
+except Exception:
+    storage = None
+try:
+    import microcontroller
+except Exception:
+    microcontroller = None
 
 from utils.mfrc522 import MFRC522
 from utils.mfrc522_utils import read_rfid, dump_tag, read_block, write_block, write_ndef, format_ndef
@@ -53,24 +61,170 @@ if __name__ == "__main__":
     def load_json_file(path, default):
         try:
             if not os.path.exists(path):
+                # Try NVM fallback when file not present
+                if microcontroller and getattr(microcontroller, 'nvm', None):
+                    try:
+                        b = microcontroller.nvm
+                        # convert to bytes safely and strip trailing zeros
+                        raw = bytes(bytearray(b)).rstrip(b"\x00")
+                        if raw:
+                            return json.loads(raw.decode('utf-8'))
+                    except Exception:
+                        pass
                 return default
             with open(path, 'r') as f:
                 return json.load(f)
         except Exception:
+            # If file read fails, attempt NVM fallback
+            try:
+                if microcontroller and getattr(microcontroller, 'nvm', None):
+                    b = microcontroller.nvm
+                    raw = bytes(bytearray(b)).rstrip(b"\x00")
+                    if raw:
+                        return json.loads(raw.decode('utf-8'))
+            except Exception:
+                pass
             return default
 
     def save_json_file(path, obj):
+        data = None
+        try:
+            data = json.dumps(obj)
+        except Exception as e:
+            return (False, 'json_serialize:' + str(e))
+
+        # Primary: try to write to filesystem
         try:
             with open(path, 'w') as f:
-                json.dump(obj, f)
-                return True
-        except Exception:
-            return False
+                f.write(data)
+                try:
+                    f.flush()
+                except Exception:
+                    pass
+            return (True, None)
+        except Exception as e:
+            errstr = str(e)
+            # If storage is read-only, attempt to remount as writable then retry
+            try:
+                if storage:
+                    try:
+                        storage.remount('/', False)
+                    except Exception:
+                        pass
+                    try:
+                        with open(path, 'w') as f:
+                            f.write(data)
+                            try:
+                                f.flush()
+                            except Exception:
+                                pass
+                        return (True, None)
+                    except Exception as e2:
+                        errstr = errstr + ' | remount_failed:' + str(e2)
+            except Exception:
+                pass
+
+            # NVM fallback: try to persist into microcontroller.nvm if available
+            try:
+                if microcontroller and getattr(microcontroller, 'nvm', None):
+                    b = microcontroller.nvm
+                    raw = data.encode('utf-8')
+                    if len(raw) <= len(b):
+                        # clear and write
+                        for i in range(len(b)): b[i] = 0
+                        for i in range(len(raw)): b[i] = raw[i]
+                        return (True, 'nvm')
+                    else:
+                        return (False, 'nvm_too_small')
+            except Exception as e3:
+                errstr = errstr + ' | nvm_failed:' + str(e3)
+
+            return (False, errstr)
 
     hid_maps = load_json_file(HID_MAPS_FILE, {})
     hid_settings = load_json_file(HID_SETTINGS_FILE, {"enabled": False, "enter": False})
     hid_enabled = bool(hid_settings.get('enabled', False))
     hid_enter = bool(hid_settings.get('enter', False))
+
+    # Ensure HID files exist on the CIRCUITPY filesystem; create defaults if missing
+    try:
+        if not os.path.exists(HID_MAPS_FILE):
+            ok, err = save_json_file(HID_MAPS_FILE, hid_maps)
+            if not ok:
+                try: print('Warning: could not create', HID_MAPS_FILE, err) 
+                except Exception: pass
+        if not os.path.exists(HID_SETTINGS_FILE):
+            ok, err = save_json_file(HID_SETTINGS_FILE, hid_settings)
+            if not ok:
+                try: print('Warning: could not create', HID_SETTINGS_FILE, err)
+                except Exception: pass
+    except Exception as e:
+        try:
+            print('Warning: could not create HID files:', e)
+        except Exception:
+            pass
+
+    # Diagnostic helper: report storage and NVM capabilities and try a test write
+    def diag_storage():
+        try:
+            print('--- STORAGE DIAGNOSTICS ---')
+            try:
+                print('cwd listing:', os.listdir('/'))
+            except Exception as e:
+                print('listdir failed:', e)
+            try:
+                if storage:
+                    print('storage has remount:', hasattr(storage, 'remount'))
+                else:
+                    print('storage module not available')
+            except Exception as e:
+                print('storage check failed:', e)
+            try:
+                if microcontroller and getattr(microcontroller, 'nvm', None) is not None:
+                    nvm = microcontroller.nvm
+                    print('nvm length:', len(nvm))
+                    # show first bytes safely
+                    try:
+                        print('nvm head:', bytes(bytearray(nvm))[:32])
+                    except Exception as e:
+                        print('nvm head failed:', e)
+                else:
+                    print('microcontroller.nvm not available')
+            except Exception as e:
+                print('nvm check failed:', e)
+            # attempt to write a small test file
+            try:
+                with open('hid_write_test.txt', 'w') as tf:
+                    tf.write('test')
+                    tf.flush()
+                print('test file write succeeded')
+            except Exception as e:
+                print('test file write failed:', e)
+                # try remount then retry
+                try:
+                    if storage and hasattr(storage, 'remount'):
+                        try:
+                            storage.remount('/', False)
+                            print('storage.remount attempted')
+                        except Exception as e2:
+                            print('storage.remount failed:', e2)
+                        try:
+                            with open('hid_write_test.txt', 'w') as tf:
+                                tf.write('test')
+                                tf.flush()
+                            print('test file write after remount succeeded')
+                        except Exception as e3:
+                            print('test write after remount failed:', e3)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # run diagnostics once at startup
+    try:
+        diag_storage()
+    except Exception:
+        pass
 
     
     # SERIAL COMMAND LOOP
@@ -252,15 +406,21 @@ if __name__ == "__main__":
                             send_response({"cmd": "hid_set", "ok": False, "error": "missing_uid"})
                         else:
                             hid_maps[uid] = text
-                            ok = save_json_file(HID_MAPS_FILE, hid_maps)
-                            send_response({"cmd": "hid_set", "ok": ok, "uid": uid, "text": text})
+                            ok, err = save_json_file(HID_MAPS_FILE, hid_maps)
+                            if ok:
+                                send_response({"cmd": "hid_set", "ok": True, "uid": uid, "text": text})
+                            else:
+                                send_response({"cmd": "hid_set", "ok": False, "uid": uid, "text": text, "error": "save_failed", "message": err})
 
                     elif action == 'hid_delete':
                         uid = cmd.get('uid')
                         if uid and uid in hid_maps:
                             hid_maps.pop(uid, None)
-                            ok = save_json_file(HID_MAPS_FILE, hid_maps)
-                            send_response({"cmd": "hid_delete", "ok": ok, "uid": uid})
+                            ok, err = save_json_file(HID_MAPS_FILE, hid_maps)
+                            if ok:
+                                send_response({"cmd": "hid_delete", "ok": True, "uid": uid})
+                            else:
+                                send_response({"cmd": "hid_delete", "ok": False, "uid": uid, "error": "save_failed", "message": err})
                         else:
                             send_response({"cmd": "hid_delete", "ok": False, "error": "not_found", "uid": uid})
 
@@ -268,15 +428,21 @@ if __name__ == "__main__":
                         enabled = bool(cmd.get('enabled', False))
                         hid_enabled = enabled
                         hid_settings['enabled'] = hid_enabled
-                        ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
-                        send_response({"cmd": "hid_set_enabled", "ok": ok, "enabled": hid_enabled})
+                        ok, err = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                        if ok:
+                            send_response({"cmd": "hid_set_enabled", "ok": True, "enabled": hid_enabled})
+                        else:
+                            send_response({"cmd": "hid_set_enabled", "ok": False, "enabled": hid_enabled, "error": "save_failed", "message": err})
 
                     elif action == 'hid_set_enter':
                         enter = bool(cmd.get('enter', False))
                         hid_enter = enter
                         hid_settings['enter'] = hid_enter
-                        ok = save_json_file(HID_SETTINGS_FILE, hid_settings)
-                        send_response({"cmd": "hid_set_enter", "ok": ok, "enter": hid_enter})
+                        ok, err = save_json_file(HID_SETTINGS_FILE, hid_settings)
+                        if ok:
+                            send_response({"cmd": "hid_set_enter", "ok": True, "enter": hid_enter})
+                        else:
+                            send_response({"cmd": "hid_set_enter", "ok": False, "enter": hid_enter, "error": "save_failed", "message": err})
 
                     elif action == 'hid_get_settings':
                         send_response({"cmd": "hid_get_settings", "enabled": hid_enabled, "enter": hid_enter})
