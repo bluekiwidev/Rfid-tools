@@ -290,29 +290,40 @@ if (connModeSelect) connModeSelect.value = 'webserial';
 
 // Sidebar toggle handlers
 const sidebar = $('sidebar');
+const sidebarBackdrop = $('sidebar-backdrop');
 const sidebarToggle = $('sidebar_toggle');
 const headerSidebarToggle = $('header_sidebar_toggle');
 const sidebarClose = $('sidebar_close');
-if (sidebarToggle) sidebarToggle.addEventListener('click', () => {
+
+function openSidebar() {
   if (!sidebar) return;
   sidebar.style.transform = 'translateX(0)';
   sidebar.setAttribute('aria-hidden', 'false');
+  if (sidebarBackdrop) sidebarBackdrop.classList.add('active');
   try { headerSidebarToggle.setAttribute('aria-expanded', 'true'); } catch (e) {}
-});
-if (sidebarClose) sidebarClose.addEventListener('click', () => { if (!sidebar) return; sidebar.style.transform = 'translateX(100%)'; sidebar.setAttribute('aria-hidden','true'); try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {} });
+}
+
+function closeSidebar() {
+  if (!sidebar) return;
+  sidebar.style.transform = 'translateX(100%)';
+  sidebar.setAttribute('aria-hidden','true');
+  if (sidebarBackdrop) sidebarBackdrop.classList.remove('active');
+  try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {}
+}
+
+if (sidebarToggle) sidebarToggle.addEventListener('click', openSidebar);
+if (sidebarClose) sidebarClose.addEventListener('click', closeSidebar);
+if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeSidebar);
+
 if (headerSidebarToggle) headerSidebarToggle.addEventListener('click', () => {
   try {
     if (!sidebar) return;
     const isOpen = sidebar.getAttribute('aria-hidden') === 'false';
     console.log('header toggle clicked, sidebar aria-hidden=', sidebar.getAttribute('aria-hidden'), 'isOpen=', isOpen);
     if (isOpen) {
-      sidebar.style.transform = 'translateX(100%)';
-      sidebar.setAttribute('aria-hidden','true');
-      try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {}
+      closeSidebar();
     } else {
-      sidebar.style.transform = 'translateX(0)';
-      sidebar.setAttribute('aria-hidden','false');
-      try { headerSidebarToggle.setAttribute('aria-expanded', 'true'); } catch (e) {}
+      openSidebar();
     }
   } catch (e) { console.warn('sidebar toggle failed', e); }
 });
@@ -320,9 +331,7 @@ if (headerSidebarToggle) headerSidebarToggle.addEventListener('click', () => {
 // Close sidebar with Escape key
 document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && sidebar && sidebar.getAttribute('aria-hidden') === 'false') {
-    sidebar.style.transform = 'translateX(100%)';
-    sidebar.setAttribute('aria-hidden','true');
-    try { headerSidebarToggle.setAttribute('aria-expanded', 'false'); } catch (e) {}
+    closeSidebar();
   }
 });
 
