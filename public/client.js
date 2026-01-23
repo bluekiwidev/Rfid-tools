@@ -4,17 +4,30 @@ if (typeof io !== 'undefined') {
 }
 const pending = {};
 
-// Fetch and update version info
+// Fetch and update version info from GitHub API
 async function updateVersionInfo() {
   try {
-    const response = await fetch('/api/version');
+    // Fetch latest commit from GitHub API
+    const response = await fetch('https://api.github.com/repos/bluekiwidev/Rfid-tools/commits?per_page=1');
     const data = await response.json();
     const versionEl = document.getElementById('version-commit');
-    if (versionEl && data.commit) {
-      versionEl.textContent = `v1.0.0-${data.commit}`;
+    if (versionEl && data && data[0] && data[0].sha) {
+      const shortSha = data[0].sha.substring(0, 7);
+      versionEl.textContent = `v1.0.0-${shortSha}`;
     }
   } catch (e) {
-    console.warn('Failed to fetch version:', e);
+    console.warn('Failed to fetch version from GitHub:', e);
+    // Fallback: try local API if server is running
+    try {
+      const response = await fetch('/api/version');
+      const data = await response.json();
+      const versionEl = document.getElementById('version-commit');
+      if (versionEl && data.commit) {
+        versionEl.textContent = `v1.0.0-${data.commit}`;
+      }
+    } catch (e2) {
+      console.warn('Failed to fetch version from local server:', e2);
+    }
   }
 }
 
@@ -25,7 +38,7 @@ if (document.readyState === 'loading') {
   updateVersionInfo();
 }
 
-// Listen for version info from server via socket
+// Listen for version info from server via socket (when using server mode)
 if (socket) {
   socket.on('version_info', (data) => {
     const versionEl = document.getElementById('version-commit');
