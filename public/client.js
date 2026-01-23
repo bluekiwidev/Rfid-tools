@@ -226,6 +226,10 @@ function updateMode() {
 modeSelect.addEventListener('change', updateMode);
 updateMode();
 
+// Default connection mode to Web Serial for browser-hosted UI
+const connModeSelect = $('conn_mode');
+if (connModeSelect) connModeSelect.value = 'webserial';
+
 // Simple mode controls
 $('simple_read').addEventListener('click', () => {
   // trigger dump and let the firmware auto-wait for tag
