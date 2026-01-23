@@ -6,29 +6,48 @@ const pending = {};
 
 // Fetch and update version info from GitHub API
 async function updateVersionInfo() {
+  const versionEl = document.getElementById('version-commit');
+  if (!versionEl) return;
+  
   try {
     // Fetch latest commit from GitHub API
     const response = await fetch('https://api.github.com/repos/bluekiwidev/Rfid-tools/commits?per_page=1');
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('GitHub API did not return JSON');
+    }
+    
     const data = await response.json();
-    const versionEl = document.getElementById('version-commit');
-    if (versionEl && data && data[0] && data[0].sha) {
+    if (data && data[0] && data[0].sha) {
       const shortSha = data[0].sha.substring(0, 7);
       versionEl.textContent = `v1.0.0-${shortSha}`;
+      return;
     }
   } catch (e) {
-    console.warn('Failed to fetch version from GitHub:', e);
-    // Fallback: try local API if server is running
-    try {
-      const response = await fetch('/api/version');
-      const data = await response.json();
-      const versionEl = document.getElementById('version-commit');
-      if (versionEl && data.commit) {
-        versionEl.textContent = `v1.0.0-${data.commit}`;
-      }
-    } catch (e2) {
-      console.warn('Failed to fetch version from local server:', e2);
-    }
+    console.warn('Failed to fetch version from GitHub:', e.message);
   }
+  
+  // Fallback: try local API if server is running (only if not already tried)
+  try {
+    const response = await fetch('/api/version');
+    if (!response.ok) throw new Error('Local API not available');
+    
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const data = await response.json();
+      if (data.commit) {
+        versionEl.textContent = `v1.0.0-${data.commit}`;
+        return;
+      }
+    }
+  } catch (e2) {
+    // Silent fail - this is expected when not running server
+  }
+  
+  // If both failed, show a generic version
+  versionEl.textContent = 'v1.0.0';
 }
 
 // Update version on page load
