@@ -207,12 +207,15 @@
       <label class="small" style="margin-left:8px"><input type="checkbox" id="verbose" /> Verbose logs</label>
       <!-- Sidebar toggle (hamburger) -->
       <button id="sidebar_toggle" title="Open settings" style="margin-left:12px; background:transparent;border:none;color:#ECE1E9;font-size:20px;cursor:pointer">☰</button>
+      <label style="margin-left:12px;margin-right:6px">Block</label>
+      <input id="addr" type="number" min="0" max="63" value="4" style="width:80px;margin-right:8px;padding:6px 8px" />
       <button id="read_block">Read Block</button>
       <button id="write_block">Write Block</button>
       <button id="dump" style="margin-left:8px;padding:6px 10px;font-size:13px">Dump Tag</button>
-  
-  
-      <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
+    </div>
+
+    <div class="row">
+      <input id="write_data" placeholder="comma-separated bytes" style="width:420px" />
     </div>
 
     <div class="row">
