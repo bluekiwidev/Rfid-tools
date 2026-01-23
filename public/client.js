@@ -24,7 +24,11 @@ async function webserialStartReader() {
     let buf = '';
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        // port closed from device/host side
+        handleTransportError('webserial port closed');
+        break;
+      }
       if (!value) continue;
       buf += new TextDecoder().decode(value);
       let idx;
@@ -43,6 +47,7 @@ async function webserialStartReader() {
     }
   } catch (e) {
     console.warn('webserial read loop ended', e);
+    handleTransportError('webserial read error: ' + (e && e.message ? e.message : String(e)));
   } finally {
     try { if (webserialReader) { webserialReader.releaseLock(); webserialReader = null; } } catch (e) {}
   }
@@ -69,7 +74,12 @@ function sendCmdAwait(cmd, timeout=12000) {
     const txn = 't' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
     cmd.txn = txn;
     const to = setTimeout(() => {
-      if (pending[txn]) { delete pending[txn]; reject(new Error('timeout')); }
+      if (pending[txn]) {
+        delete pending[txn];
+        setReaderState('timeout');
+        setStatus('error', 'command timeout');
+        reject(new Error('timeout'));
+      }
     }, timeout);
     pending[txn] = { resolve, reject, to };
     // send via selected transport
@@ -86,6 +96,23 @@ function sendCmdAwait(cmd, timeout=12000) {
       else { clearTimeout(to); delete pending[txn]; reject(new Error('no_server_connection')); }
     }
   });
+}
+
+function handleTransportError(msg) {
+  try {
+    console.warn('transport error:', msg);
+    setStatus('error', msg || 'transport error');
+    setReaderState('timeout');
+    // reject pending txns
+    for (const t of Object.keys(pending)) {
+      try { clearTimeout(pending[t].to); pending[t].reject(new Error('transport_error: ' + msg)); } catch (e) {}
+      try { delete pending[t]; } catch (e) {}
+    }
+    // close webserial resources if applicable
+    try { if (webserialReader) { webserialReader.cancel(); webserialReader.releaseLock(); webserialReader = null; } } catch (e) {}
+    try { if (webserialWriter) { webserialWriter.releaseLock(); webserialWriter = null; } } catch (e) {}
+    try { if (webserialPort) { webserialPort.close(); webserialPort = null; } } catch (e) {}
+  } catch (e) { console.warn('handleTransportError failed', e); }
 }
 
 const $ = (id) => document.getElementById(id);
@@ -444,6 +471,13 @@ function handleSerialRaw(r) {
   } catch (e) {}
   try {
     const t = String(r || '').trim();
+    // common firmware messages for missing/removed tag
+    const tl = t.toLowerCase();
+    if (tl.indexOf('no tag') !== -1 || tl.indexOf('card removed') !== -1 || tl.indexOf('tag removed') !== -1) {
+      setStatus('error', 'No tag present');
+      setReaderState('timeout');
+      return;
+    }
     if (t.toLowerCase() === 'ready') {
       setReaderState('ready');
       if (isVerbose()) log('FW: ready');
