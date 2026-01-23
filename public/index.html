@@ -83,6 +83,13 @@
       opacity: 1;
       pointer-events: auto;
     }
+    /* Toasts */
+    #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 9999; display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+    .toast { background: rgba(34,34,34,0.95); color: #fff; padding:10px 14px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.2); min-width:160px; max-width:360px; font-size:13px; }
+    .toast.info { background: #2b6cb0; }
+    .toast.success { background: #2f855a; }
+    .toast.error { background: #c53030; }
+    .toast small { display:block; opacity:0.9; font-size:11px; margin-top:4px }
   </style>
 </head>
 <body>
@@ -281,6 +288,9 @@
     <h3 style="margin-top:0;color:#2E6467">Serial Output</h3>
     <textarea id="log" readonly></textarea>
   </div>
+
+  <!-- Toast container -->
+  <div id="toasts" aria-live="polite" aria-atomic="true"></div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="client.js"></script>

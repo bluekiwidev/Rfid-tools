@@ -196,6 +196,21 @@ function handleTransportError(msg) {
 const $ = (id) => document.getElementById(id);
 const log = (t) => { $('log').value += t + '\n'; $('log').scrollTop = $('log').scrollHeight; };
 
+// Toast helper
+function showToast(msg, type='info', timeout=4500) {
+  try {
+    const root = $('toasts');
+    if (!root) { alert(msg); return; }
+    const el = document.createElement('div'); el.className = 'toast ' + (type||'info'); el.textContent = msg;
+    root.appendChild(el);
+    setTimeout(() => { try { el.style.transition = 'opacity 220ms ease'; el.style.opacity = '0'; setTimeout(()=>el.remove(), 250); } catch (e) {} }, timeout);
+  } catch (e) { try { alert(msg); } catch (e) {} }
+}
+
+function toastError(msg) { showToast(msg, 'error'); }
+function toastInfo(msg) { showToast(msg, 'info'); }
+function toastSuccess(msg) { showToast(msg, 'success'); }
+
 function pretty(obj) {
   try { return JSON.stringify(obj, null, 2); } catch (e) { return String(obj); }
 }
@@ -249,7 +264,7 @@ function setReaderState(state) {
 
 const listBtnEl = $('list');
 if (listBtnEl) listBtnEl.addEventListener('click', () => {
-  if (!socket) { alert('No server connection: switch to Server Proxy or use Web Serial'); return; }
+  if (!socket) { toastError('No server connection: switch to Server Proxy or use Web Serial'); return; }
   if (!socket.connected) {
     socket.connect();
     socket.once('connect', () => { socket.emit('list_ports'); });
@@ -264,7 +279,7 @@ function sendCmd(cmd) {
     try { webserialSendLine(JSON.stringify(cmd)); } catch (e) { log('WebSerial send error: ' + e); }
   } else {
     if (socket) socket.emit('serial_cmd', cmd);
-    else alert('No server connection: switch to Server Proxy or use Web Serial');
+    else toastError('No server connection: switch to Server Proxy or use Web Serial');
   }
 }
 
@@ -290,14 +305,14 @@ if (connectBtnEl) connectBtnEl.addEventListener('click', async () => {
     } catch (e) {
       console.error(e);
       setStatus('error', String(e));
-      alert('Web Serial connect failed: ' + e);
+      toastError('Web Serial connect failed: ' + e);
     }
     return;
   }
   const p = $('ports').value;
-  if (!p) { alert('select port'); return }
+  if (!p) { toastError('Select port'); return }
   setStatus('connecting', p);
-  if (!socket) { alert('No server connection'); return; }
+  if (!socket) { toastError('No server connection'); return; }
   if (!socket.connected) {
     socket.connect();
     socket.once('connect', () => { socket.emit('connect_serial', { path: p }); });
@@ -315,7 +330,7 @@ if (disconnectBtnEl) disconnectBtnEl.addEventListener('click', async () => {
     setReaderState('idle');
     return;
   }
-  if (!socket) { alert('No server connection'); return; }
+  if (!socket) { toastError('No server connection'); return; }
   if (!socket.connected) { socket.connect(); socket.once('connect', () => { socket.emit('disconnect_serial'); }); }
   else socket.emit('disconnect_serial');
 });
@@ -469,6 +484,18 @@ async function refreshHidList() {
   try {
     const r = await sendCmdAwait({ cmd: 'hid_list' }, 4000);
     const maps = (r && r.maps) ? r.maps : {};
+    // show persistence source if firmware provided one
+    try {
+      const wrap = $('hid_map_list'); if (wrap) {
+        // remove any source banner
+        const prev = wrap.querySelector('.hid-source-banner'); if (prev) prev.remove();
+        const src = (r && (r.source || r.storage || r._source)) ? (r.source || r.storage || r._source) : null;
+        if (src) {
+          const b = document.createElement('div'); b.className = 'hid-source-banner'; b.style.fontSize = '12px'; b.style.color = '#666'; b.style.marginBottom = '6px'; b.textContent = 'Persistence: ' + src;
+          wrap.appendChild(b);
+        }
+      }
+    } catch (e) {}
     renderHidMapUI(maps);
   } catch (e) {
     const wrap = $('hid_map_list'); if (wrap) wrap.textContent = 'Failed to load mappings';
@@ -479,12 +506,12 @@ async function refreshHidList() {
 const hidAddBtn = $('hid_add_btn'); if (hidAddBtn) hidAddBtn.addEventListener('click', async () => {
   const uidIn = $('hid_uid_input'); const txtIn = $('hid_text_input');
   const uid = (uidIn && uidIn.value) || ''; const text = (txtIn && txtIn.value) || '';
-  if (!uid || !text) return alert('Provide both UID and text');
+  if (!uid || !text) { toastError('Provide both UID and text'); return; }
   try {
     // if editing existing mapping
     const editing = window._hidEditingUid || null;
     const r = await sendCmdAwait({ cmd: 'hid_set', uid, text }, 4000);
-    if (!(r && r.ok)) { return alert('Save failed'); }
+    if (!(r && r.ok)) { return toastError('Save failed: ' + (r && r.message ? r.message : 'unknown')); }
     // if UID changed, delete old entry
     if (editing && editing !== uid) {
       try { await sendCmdAwait({ cmd: 'hid_delete', uid: editing }, 3000); } catch (e) { /* ignore */ }
@@ -495,7 +522,7 @@ const hidAddBtn = $('hid_add_btn'); if (hidAddBtn) hidAddBtn.addEventListener('c
     const cancelBtn = $('hid_cancel_btn'); if (cancelBtn) cancelBtn.style.display = 'none';
     refreshHidList();
     try { if (uidIn) uidIn.value = ''; if (txtIn) txtIn.value = ''; } catch (e) {}
-  } catch (e) { alert('Save failed: ' + e); }
+  } catch (e) { toastError('Save failed: ' + e); }
 });
 
 // Refresh button
@@ -506,9 +533,9 @@ const hidScanBtn = $('hid_scan_btn'); if (hidScanBtn) hidScanBtn.addEventListene
   try {
     setReaderState('waiting');
     const r = await sendCmdAwait({ cmd: 'read_uid' }, 20000);
-    if (!r) { alert('No response from device'); setReaderState('idle'); return; }
+    if (!r) { toastError('No response from device'); setReaderState('idle'); return; }
     const uid = r.uid || null;
-    if (!uid) { alert('No UID read'); setReaderState('idle'); return; }
+    if (!uid) { toastError('No UID read'); setReaderState('idle'); return; }
     const uidInput = $('hid_uid_input'); const txtInput = $('hid_text_input'); const addBtn = $('hid_add_btn'); const cancelBtn = $('hid_cancel_btn');
     if (uidInput) uidInput.value = uid;
     // fetch current mappings to auto-fill text if exists
@@ -533,7 +560,7 @@ const hidScanBtn = $('hid_scan_btn'); if (hidScanBtn) hidScanBtn.addEventListene
     }
     setReaderState('ready');
   } catch (e) {
-    alert('Scan failed: ' + e);
+    toastError('Scan failed: ' + e);
     setReaderState('idle');
   }
 });
@@ -543,8 +570,8 @@ const hidEnabledEl = $('hid_enabled'); if (hidEnabledEl) hidEnabledEl.addEventLi
   try {
     const enabled = !!e.target.checked;
     const r = await sendCmdAwait({ cmd: 'hid_set_enabled', enabled }, 3000);
-    if (!(r && r.ok)) { alert('Failed to set enabled'); }
-  } catch (err) { alert('Failed to set enabled: ' + err); }
+    if (!(r && r.ok)) { toastError('Failed to set enabled: ' + (r && r.message ? r.message : 'unknown')); }
+  } catch (err) { toastError('Failed to set enabled: ' + err); }
 });
 
 // Enter toggle
@@ -552,8 +579,8 @@ const hidEnterEl = $('hid_enter'); if (hidEnterEl) hidEnterEl.addEventListener('
   try {
     const enter = !!e.target.checked;
     const r = await sendCmdAwait({ cmd: 'hid_set_enter', enter }, 3000);
-    if (!(r && r.ok)) { alert('Failed to set enter'); }
-  } catch (err) { alert('Failed to set enter: ' + err); }
+    if (!(r && r.ok)) { toastError('Failed to set enter: ' + (r && r.message ? r.message : 'unknown')); }
+  } catch (err) { toastError('Failed to set enter: ' + err); }
 });
 
 // initialize HID UI state
@@ -602,7 +629,7 @@ const simpleWriteEl = $('simple_write'); if (simpleWriteEl) simpleWriteEl.addEve
   const text = $('simple_text').value || '';
   const encoder = new TextEncoder();
   const bytes = Array.from(encoder.encode(text));
-  if (bytes.length === 0) return alert('Nothing to write');
+  if (bytes.length === 0) { toastError('Nothing to write'); return; }
 
   // determine number of blocks
   const needed = Math.ceil(bytes.length / 16);
@@ -643,9 +670,9 @@ const simpleWriteEl = $('simple_write'); if (simpleWriteEl) simpleWriteEl.addEve
         throw new Error('write failed for block ' + addr + ' (' + (w.error||w.message||'') + ')');
       }
     }
-    alert('Write complete');
+    toastSuccess('Write complete');
   } catch (err) {
-    alert('Write aborted: ' + (err && err.message ? err.message : String(err)));
+    toastError('Write aborted: ' + (err && err.message ? err.message : String(err)));
   }
 });
 
@@ -692,7 +719,21 @@ function renderHidMapUI(maps) {
   keys.forEach(uid => {
     const row = document.createElement('div');
     row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.alignItems = 'center'; row.style.padding = '6px 4px';
-    const left = document.createElement('div'); left.style.flex = '1'; left.textContent = uid + ' → ' + maps[uid];
+    const left = document.createElement('div'); left.style.flex = '1';
+    // support values that may be plain text or object { text, source }
+    const entry = maps[uid];
+    let text = '';
+    let source = null;
+    if (entry === null || typeof entry === 'undefined') { text = ''; }
+    else if (typeof entry === 'string') { text = entry; }
+    else if (typeof entry === 'object') { text = entry.text || entry.value || entry.map || ''; source = entry.source || entry.storage || entry._source || null; }
+    const uidNode = document.createElement('span'); uidNode.style.fontFamily = 'monospace'; uidNode.style.marginRight = '8px'; uidNode.textContent = uid;
+    const arrow = document.createElement('span'); arrow.style.marginRight = '8px'; arrow.textContent = '→';
+    const txtNode = document.createElement('span'); txtNode.textContent = text;
+    left.appendChild(uidNode); left.appendChild(arrow); left.appendChild(txtNode);
+    if (source) {
+      const src = document.createElement('small'); src.style.marginLeft = '8px'; src.style.color = '#666'; src.textContent = '[' + source + ']'; left.appendChild(src);
+    }
     // Edit button
     const edit = document.createElement('button'); edit.textContent = 'Edit'; edit.style.marginLeft = '8px';
     edit.addEventListener('click', () => {
@@ -710,8 +751,8 @@ function renderHidMapUI(maps) {
       try {
         const rr = await sendCmdAwait({ cmd: 'hid_delete', uid });
         if (rr && rr.ok) { refreshHidList(); }
-        else { alert('Delete failed: ' + (rr && rr.message ? rr.message : 'unknown')); }
-      } catch (e) { alert('Delete failed: ' + e); }
+            else { toastError('Delete failed: ' + (rr && rr.message ? rr.message : 'unknown')); }
+          } catch (e) { toastError('Delete failed: ' + e); }
     });
     const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '6px'; actions.appendChild(edit); actions.appendChild(del);
     row.appendChild(left); row.appendChild(actions); wrap.appendChild(row);
