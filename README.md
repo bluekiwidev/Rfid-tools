@@ -1,4 +1,3 @@
-RFID Control Panel
 # RFID Control Panel
 
 This repository contains two complementary parts:

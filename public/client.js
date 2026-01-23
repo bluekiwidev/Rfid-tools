@@ -250,11 +250,13 @@ if (connModeSelect) connModeSelect.value = 'webserial';
 // Sidebar toggle handlers
 const sidebar = $('sidebar');
 const sidebarToggle = $('sidebar_toggle');
+const headerSidebarToggle = $('header_sidebar_toggle');
 const sidebarClose = $('sidebar_close');
 if (sidebarToggle) sidebarToggle.addEventListener('click', () => {
   if (sidebar) sidebar.style.right = '0';
 });
 if (sidebarClose) sidebarClose.addEventListener('click', () => { if (sidebar) sidebar.style.right = '-320px'; });
+if (headerSidebarToggle) headerSidebarToggle.addEventListener('click', () => { if (sidebar) sidebar.style.right = '0'; });
 
 // Sync sidebar controls with main controls
 function updateConnectionUI() {
