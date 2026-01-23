@@ -95,10 +95,10 @@ function pretty(obj) {
   try { return JSON.stringify(obj, null, 2); } catch (e) { return String(obj); }
 }
 
-function isVerbose() { return !!$('verbose') && $('verbose').checked; }
+function isVerbose() { const v = $('verbose') || $('sb_verbose'); return !!v && v.checked; }
 
-function getProtocol() { const p = $('protocol'); return p ? p.value : 'auto'; }
-function getKey() { const k = $('key'); return k ? (k.value ? k.value.trim() : null) : null; }
+function getProtocol() { const p = $('protocol') || $('sb_protocol'); return p ? p.value : 'auto'; }
+function getKey() { const k = $('key') || $('sb_key'); return k ? (k.value ? k.value.trim() : null) : null; }
 
 function setStatus(state, detail) {
   const dot = $('status-dot');
@@ -231,20 +231,20 @@ $('reset_pico').addEventListener('click', async () => {
 
 $('clear_log').addEventListener('click', () => { $('log').value = ''; });
 
-// Mode handling
-const modeSelect = $('mode');
+// Mode handling (use sidebar controls as fallback)
+const modeSelect = $('mode') || $('sb_mode');
 function updateMode() {
-  const m = modeSelect.value;
+  const m = (modeSelect && modeSelect.value) ? modeSelect.value : 'simple';
   const simple = $('simple_ui');
   const adv = $('advanced_ui');
   if (simple) simple.style.display = m === 'simple' ? 'block' : 'none';
   if (adv) adv.style.display = m === 'advanced' ? 'block' : 'none';
 }
-modeSelect.addEventListener('change', updateMode);
+if (modeSelect) modeSelect.addEventListener('change', updateMode);
 updateMode();
 
-// Default connection mode to Web Serial for browser-hosted UI
-const connModeSelect = $('conn_mode');
+// Default connection mode to Web Serial for browser-hosted UI (prefers top control if present, otherwise sidebar)
+const connModeSelect = $('conn_mode') || $('sb_conn_mode');
 if (connModeSelect) connModeSelect.value = 'webserial';
 
 // Sidebar toggle handlers

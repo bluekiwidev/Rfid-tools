@@ -131,25 +131,7 @@
       <h2 style="margin:0">RFID Control Panel</h2>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <label for="mode" class="small">Mode</label>
-      <select id="mode">
-        <option value="simple">Simple</option>
-        <option value="advanced">Advanced</option>
-      </select>
-      <label for="conn_mode" class="small" style="margin-left:8px">Connection</label>
-      <select id="conn_mode">
-        <option value="server">Server Proxy</option>
-        <option value="webserial" selected>Web Serial (Browser)</option>
-      </select>
-      <label for="protocol" class="small" style="margin-left:8px">Protocol</label>
-      <select id="protocol">
-        <option value="auto">Auto</option>
-        <option value="mifare">MIFARE Classic</option>
-        <option value="ntag">NTAG / NXP</option>
-      </select>
-      <label class="small" style="margin-left:8px">Key</label>
-      <input id="key" placeholder="FF,FF,FF,FF,FF,FF or default" style="width:160px" />
-      <label class="small" style="margin-left:8px"><input type="checkbox" id="verbose" /> Verbose logs</label>
+      <!-- Controls moved to settings sidebar to reduce header clutter -->
     </div>
   </div>
 
@@ -184,60 +166,7 @@
       <button id="read_block">Read Block</button>
       <button id="write_block">Write Block</button>
   
-  <!-- Sidebar (hidden by default) -->
-  <div id="sidebar" style="position:fixed;right:-320px;top:0;width:320px;height:100%;background:#fff;border-left:2px solid #5B7785;box-shadow:-4px 0 12px rgba(0,0,0,0.08);padding:16px;transition:right 220ms ease;z-index:200">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <strong style="color:#2E6467">Settings</strong>
-      <button id="sidebar_close" style="background:#5B7785;color:#ECE1E9;border:none;padding:6px 8px;border-radius:4px;cursor:pointer">Close</button>
-    </div>
-    <div style="margin-bottom:10px">
-      <label class="small">Connection</label>
-      <select id="sb_conn_mode" style="width:100%">
-        <option value="server">Server Proxy</option>
-        <option value="webserial">Web Serial (Browser)</option>
-      </select>
-    </div>
-    <div style="margin-bottom:10px">
-      <label class="small">Mode</label>
-      <select id="sb_mode" style="width:100%">
-        <option value="simple">Simple</option>
-        <option value="advanced">Advanced</option>
-      </select>
-    </div>
-    <div style="margin-bottom:10px">
-      <label class="small">Protocol</label>
-      <select id="sb_protocol" style="width:100%">
-        <option value="auto">Auto</option>
-        <option value="mifare">MIFARE Classic</option>
-        <option value="ntag">NTAG / NXP</option>
-      </select>
-    </div>
-    <div style="margin-bottom:10px">
-      <label class="small">Key</label>
-      <input id="sb_key" placeholder="FF,FF,FF,FF,FF,FF or default" style="width:100%" />
-    </div>
-    <div style="margin-bottom:10px">
-      <label class="small"><input type="checkbox" id="sb_verbose" /> Verbose logs</label>
-    </div>
-    <div style="margin-top:16px">
-      <button id="open_serial_page" style="background:#5B7785;color:#ECE1E9;border:none;padding:8px 12px;border-radius:4px;cursor:pointer">Open Serial Output Page</button>
-    </div>
-    <div style="margin-top:12px">
-      <a id="github_link" href="https://github.com/bluekiwidev/Rfid-tools" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#24292e;color:#fff;padding:8px 12px;border-radius:4px;text-decoration:none">View on GitHub</a>
-    </div>
-  </div>
-
-  <!-- Serial output full-page view (hidden) -->
-  <div id="serial_page" style="display:none;position:fixed;inset:0;background:#fff;z-index:300;padding:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <strong>Serial Output</strong>
-      <div>
-        <button id="serial_back" style="margin-right:8px;background:#5B7785;color:#ECE1E9;border:none;padding:6px 8px;border-radius:4px;cursor:pointer">Back</button>
-        <button id="serial_clear" style="background:#a33;color:#fff;border:none;padding:6px 8px;border-radius:4px;cursor:pointer">Clear</button>
-      </div>
-    </div>
-    <textarea id="serial_only_log" readonly style="width:100%;height:calc(100% - 48px);background:#000;color:#0f0;padding:8px;overflow:auto"></textarea>
-  </div>
+  
       <input id="write_data" placeholder="comma-separated bytes" style="width:300px" />
     </div>
 
