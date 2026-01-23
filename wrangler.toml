@@ -1,8 +1,1 @@
-# Wrangler configuration for deploying the `public/` site to Cloudflare Workers Sites or Pages.
-# Replace the placeholders below with your Cloudflare Account ID and any desired name.
-
-name = "rfid-tools-site"
-# Pages output directory
-pages_build_output_dir = "./public"
-
-# Note: Cloudflare Pages build will ignore `account_id` and `[site]` fields.
+# Configuration file - not used for GitHub Pages deployment
