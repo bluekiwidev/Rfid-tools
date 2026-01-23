@@ -1,4 +1,7 @@
-const socket = io();
+let socket = null;
+if (typeof io !== 'undefined') {
+  try { socket = io({ autoConnect: false }); } catch (e) { socket = null; }
+}
 const pending = {};
 
 // Web Serial state
@@ -79,7 +82,8 @@ function sendCmdAwait(cmd, timeout=12000) {
         });
       } catch (e) { clearTimeout(to); delete pending[txn]; reject(e); }
     } else {
-      socket.emit('serial_cmd', cmd);
+      if (socket) socket.emit('serial_cmd', cmd);
+      else { clearTimeout(to); delete pending[txn]; reject(new Error('no_server_connection')); }
     }
   });
 }
@@ -136,18 +140,22 @@ function setReaderState(state) {
   el.style.color = color;
 }
 
-$('list').addEventListener('click', () => socket.emit('list_ports'));
+$('list').addEventListener('click', () => {
+  if (socket) socket.emit('list_ports');
+  else alert('No server connection: switch to Server Proxy or use Web Serial');
+});
 
 function sendCmd(cmd) {
   const mode = (document.getElementById('conn_mode') || {}).value || 'server';
   if (mode === 'webserial' && webserialPort && webserialWriter) {
     try { webserialSendLine(JSON.stringify(cmd)); } catch (e) { log('WebSerial send error: ' + e); }
   } else {
-    socket.emit('serial_cmd', cmd);
+    if (socket) socket.emit('serial_cmd', cmd);
+    else alert('No server connection: switch to Server Proxy or use Web Serial');
   }
 }
 
-socket.on('ports', (ports) => {
+if (socket) socket.on('ports', (ports) => {
   const sel = $('ports'); sel.innerHTML = '';
   ports.forEach(p => {
     const opt = document.createElement('option');
@@ -174,7 +182,8 @@ $('connect').addEventListener('click', async () => {
   const p = $('ports').value;
   if (!p) { alert('select port'); return }
   setStatus('connecting', p);
-  socket.emit('connect_serial', { path: p });
+  if (socket) socket.emit('connect_serial', { path: p });
+  else alert('No server connection');
 });
 
 $('disconnect').addEventListener('click', async () => {
@@ -185,7 +194,8 @@ $('disconnect').addEventListener('click', async () => {
     setReaderState('idle');
     return;
   }
-  socket.emit('disconnect_serial');
+  if (socket) socket.emit('disconnect_serial');
+  else alert('No server connection');
 });
 
 // Reset Pico (UI clear + request server to toggle DTR)
@@ -199,7 +209,7 @@ $('reset_pico').addEventListener('click', () => {
   modeSelect.value = 'simple'; updateMode();
   setReaderState('idle');
   // ask server to reset the attached Pico
-  socket.emit('reset_pico');
+  if (socket) socket.emit('reset_pico');
 });
 
 $('clear_log').addEventListener('click', () => { $('log').value = ''; });
@@ -290,7 +300,7 @@ $('simple_erase').addEventListener('click', () => {
   sendCmd({ cmd: 'write_block', uid: null, addr: blk, data: zeros, protocol: getProtocol(), key: getKey() });
 });
 
-socket.on('serial_status', (s) => {
+if (socket) socket.on('serial_status', (s) => {
   // show status in status area; log only when verbose
   if (isVerbose()) log('STATUS: ' + pretty(s));
   if (s && s.ok) {
@@ -414,10 +424,10 @@ function handleSerialData(d) {
     }
   }
 }
-socket.on('serial_data', handleSerialData);
-socket.on('serial_raw', (r) => { log('RAW: ' + r); });
+if (socket) socket.on('serial_data', handleSerialData);
+if (socket) socket.on('serial_raw', (r) => { log('RAW: ' + r); });
 // interpret plain text 'ready' from firmware
-socket.on('serial_raw', (r) => {
+if (socket) socket.on('serial_raw', (r) => {
   try {
     const t = String(r || '').trim();
     if (t.toLowerCase() === 'ready') {
@@ -465,10 +475,12 @@ $('write_ndef').addEventListener('click', () => {
 });
 
 // auto-list ports on load (server mode only)
-if ((document.getElementById('conn_mode') || {}).value !== 'webserial') socket.emit('list_ports');
+if ((document.getElementById('conn_mode') || {}).value !== 'webserial') {
+  if (socket) socket.emit('list_ports');
+}
 
-socket.on('connect', () => setStatus('connected', 'socket'));
-socket.on('disconnect', () => setStatus('disconnected', 'socket'));
+if (socket) socket.on('connect', () => setStatus('connected', 'socket'));
+if (socket) socket.on('disconnect', () => setStatus('disconnected', 'socket'));
 
 function renderDump(uid, dump) {
   const wrap = $('dump_table_wrap');
