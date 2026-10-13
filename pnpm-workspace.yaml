@@ -1,2 +1,5 @@
+packages:
+  - "."
+
 allowBuilds:
   '@serialport/bindings-cpp': true
